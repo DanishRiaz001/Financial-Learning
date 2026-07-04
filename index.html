@@ -123,6 +123,7 @@ tr.row-link:hover { background: #FBFAF6; }
       <a href="#/accounts" data-route="accounts">Accounts</a>
       <a href="#/companies" data-route="companies">Companies</a>
       <a href="#/procedures" data-route="procedures">Procedures</a>
+      <a href="#/laws" data-route="laws">Laws</a>
       <a href="#/learn" data-route="learn">Learn</a>
       <a href="#/knowledge" data-route="knowledge">Knowledge log</a>
       <a href="#/admin" data-route="admin" id="nav-admin">Admin</a>
@@ -708,12 +709,149 @@ function showAddKnowledgeModal(root) {
   });
 }
 
+// ---------- LAWS ----------
+async function renderLaws(root, params) {
+  if (params?.id) return renderLawDetail(root, params.id);
+  root.innerHTML = `
+    <h1>Laws</h1>
+    <p class="muted">Search across every law article by English term, Norwegian term, or paragraph number.</p>
+    <div class="toolbar" style="margin-top:20px;"><input type="search" id="law-search" placeholder="Search e.g. 'bad debt', 'audit', 'VAT registration', 'Section 6-2'" /></div>
+    <div id="laws-content"><p class="muted">Loading laws...</p></div>
+  `;
+  root.querySelector('#law-search').addEventListener('input', debounce(() => loadLawResults(root), 300));
+  loadLawList(root);
+}
+
+async function loadLawList(root) {
+  const contentEl = root.querySelector('#laws-content');
+  const { data, error } = await supabase.from('laws').select('*').order('short_name_no');
+  if (error) { contentEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  contentEl.innerHTML = `
+    <div class="section-label">Browse by law</div>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      ${data.map(l => `
+        <div class="card row-link" data-id="${l.id}" style="cursor:pointer;">
+          <h3>${escapeHtml(l.short_name_no)}</h3>
+          <p class="muted small" style="margin-top:4px;">${escapeHtml(l.full_name_en)}</p>
+        </div>
+      `).join('')}
+    </div>
+  `;
+  contentEl.querySelectorAll('.row-link').forEach(card => {
+    card.addEventListener('click', () => { window.location.hash = `#/laws/${card.dataset.id}`; });
+  });
+}
+
+async function loadLawResults(root) {
+  const contentEl = root.querySelector('#laws-content');
+  const term = root.querySelector('#law-search').value.trim();
+  if (!term) { loadLawList(root); return; }
+  contentEl.innerHTML = `<p class="muted">Searching...</p>`;
+  const { data, error } = await supabase
+    .from('law_articles')
+    .select('*, laws(short_name_no, full_name_en, official_url)')
+    .or(`title_en.ilike.%${term}%,summary_en.ilike.%${term}%,title_no.ilike.%${term}%,paragraph_no.ilike.%${term}%`)
+    .limit(50);
+  if (error) { contentEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) { contentEl.innerHTML = `<div class="empty-state"><h3>No matching law articles.</h3><p>Try a different English term, or browse by law instead.</p></div>`; return; }
+  contentEl.innerHTML = `
+    <div class="section-label">${data.length} matching article${data.length === 1 ? '' : 's'}</div>
+    ${data.map(a => `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <h3>${escapeHtml(a.laws?.short_name_no || '')} ${escapeHtml(a.paragraph_no || '')}</h3>
+          ${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
+        </div>
+        <p class="muted small" style="margin-top:2px;">${escapeHtml(a.title_en || '')}</p>
+        <p style="margin-top:8px;">${escapeHtml(a.summary_en)}</p>
+      </div>
+    `).join('')}
+  `;
+}
+
+async function renderLawDetail(root, lawId) {
+  root.innerHTML = `<p class="muted">Loading law...</p>`;
+  const [lawRes, articlesRes] = await Promise.all([
+    supabase.from('laws').select('*').eq('id', lawId).single(),
+    supabase.from('law_articles').select('*').eq('law_id', lawId).order('paragraph_no'),
+  ]);
+  if (lawRes.error || !lawRes.data) { root.innerHTML = `<p class="error-text">Law not found.</p><a href="#/laws">Back to laws</a>`; return; }
+  const l = lawRes.data;
+  root.innerHTML = `
+    <a href="#/laws" class="muted small">&larr; Back to laws</a>
+    <div style="margin-top:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+      <h1>${escapeHtml(l.short_name_no)}</h1>
+      <p class="muted" style="margin-top:4px;">${escapeHtml(l.full_name_en)} - ${escapeHtml(l.full_name_no)}</p>
+      ${l.official_url ? `<a href="${escapeHtml(l.official_url)}" target="_blank" rel="noopener" class="small">View official text on Lovdata</a>` : ''}
+    </div>
+    <div class="section-label" style="margin-top:20px;">Articles (${(articlesRes.data || []).length})</div>
+    ${(articlesRes.data || []).map(a => `
+      <div class="card" style="margin-bottom:10px;">
+        <h3>${escapeHtml(a.paragraph_no)} ${a.title_en ? '- ' + escapeHtml(a.title_en) : ''}</h3>
+        <p style="margin-top:8px;">${escapeHtml(a.summary_en)}</p>
+      </div>
+    `).join('') || `<div class="empty-state"><h3>No articles added for this law yet.</h3></div>`}
+  `;
+}
+
+// ---------- GLOBAL SEARCH (accounts + laws together) ----------
+async function renderGlobalSearch(root, params) {
+  const term = decodeURIComponent(params?.id || '');
+  root.innerHTML = `
+    <h1>Search results</h1>
+    <div class="toolbar" style="margin-top:20px;"><input type="search" id="global-search-box" placeholder="Search accounts, companies, laws, or procedures" value="${escapeHtml(term)}" /></div>
+    <div id="global-search-results"><p class="muted">Searching...</p></div>
+  `;
+  root.querySelector('#global-search-box').addEventListener('input', debounce(() => {
+    const t = root.querySelector('#global-search-box').value.trim();
+    window.location.hash = `#/search/${encodeURIComponent(t)}`;
+  }, 300));
+  await runGlobalSearch(root, term);
+}
+
+async function runGlobalSearch(root, term) {
+  const resultsEl = root.querySelector('#global-search-results');
+  if (!term) { resultsEl.innerHTML = `<p class="muted">Type a term above to search.</p>`; return; }
+
+  const [acctRes, lawRes] = await Promise.all([
+    supabase.from('accounts').select('id, account_number, name_no, purpose_en').eq('is_active', true)
+      .or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%,purpose_en.ilike.%${term}%`).limit(20),
+    supabase.from('law_articles').select('*, laws(short_name_no, full_name_en, official_url)')
+      .or(`title_en.ilike.%${term}%,summary_en.ilike.%${term}%,title_no.ilike.%${term}%,paragraph_no.ilike.%${term}%`).limit(20),
+  ]);
+
+  const accounts = acctRes.data || [];
+  const laws = lawRes.data || [];
+
+  resultsEl.innerHTML = `
+    <div class="section-label">Accounts (${accounts.length})</div>
+    ${accounts.length ? `<table><thead><tr><th>Konto</th><th>Navn</th><th>Purpose</th></tr></thead><tbody>
+      ${accounts.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.purpose_en)}</td></tr>`).join('')}
+    </tbody></table>` : `<p class="muted small">No matching accounts.</p>`}
+
+    <div class="section-label" style="margin-top:24px;">Law articles (${laws.length})</div>
+    ${laws.length ? laws.map(a => `
+      <div class="card" style="margin-bottom:10px;">
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <h3>${escapeHtml(a.laws?.short_name_no || '')} ${escapeHtml(a.paragraph_no || '')}</h3>
+          ${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
+        </div>
+        <p class="muted small" style="margin-top:2px;">${escapeHtml(a.title_en || '')}</p>
+        <p style="margin-top:8px;">${escapeHtml(a.summary_en)}</p>
+      </div>
+    `).join('') : `<p class="muted small">No matching law articles.</p>`}
+  `;
+  resultsEl.querySelectorAll('tr.row-link').forEach(row => {
+    row.addEventListener('click', () => { window.location.hash = `#/accounts/${row.dataset.id}`; });
+  });
+}
+
 // ---------- ROUTER / BOOT ----------
 const loginScreen = document.getElementById('login-screen');
 const appShell = document.getElementById('app-shell');
 const viewRoot = document.getElementById('view-root');
 const sidebar = document.getElementById('sidebar');
-const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, learn: renderLearn, knowledge: renderKnowledge, admin: renderAdmin };
+const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, laws: renderLaws, learn: renderLearn, knowledge: renderKnowledge, admin: renderAdmin, search: renderGlobalSearch };
 
 async function boot() {
   const session = await getSession();
@@ -741,12 +879,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 document.getElementById('logout-btn').addEventListener('click', async () => { await signOut(); window.location.hash = ''; showLogin(); });
 document.getElementById('global-search').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
-    window.__pendingAccountSearch = e.target.value;
-    if (window.location.hash === '#/accounts') {
-      router();
-    } else {
-      window.location.hash = '#/accounts';
-    }
+    const term = e.target.value.trim();
+    if (!term) return;
+    const newHash = `#/search/${encodeURIComponent(term)}`;
+    const alreadyThere = window.location.hash === newHash;
+    window.location.hash = newHash;
+    if (alreadyThere) router();
   }
 });
 async function router() {
