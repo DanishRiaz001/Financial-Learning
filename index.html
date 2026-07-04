@@ -123,6 +123,8 @@ tr.row-link:hover { background: #FBFAF6; }
       <a href="#/accounts" data-route="accounts">Accounts</a>
       <a href="#/companies" data-route="companies">Companies</a>
       <a href="#/procedures" data-route="procedures">Procedures</a>
+      <a href="#/learn" data-route="learn">Learn</a>
+      <a href="#/knowledge" data-route="knowledge">Knowledge log</a>
       <a href="#/admin" data-route="admin" id="nav-admin">Admin</a>
     </nav>
     <main class="content" id="view-root"></main>
@@ -224,36 +226,75 @@ async function renderHome(root) {
 
 // ---------- ACCOUNTS ----------
 let activeClassFilter = null;
+let currentPage = 0;
+let pageSize = 50;
+window.__pendingAccountSearch = window.__pendingAccountSearch || null;
+
 async function renderAccounts(root, params) {
   if (params?.id) return renderAccountDetail(root, params.id);
+  currentPage = 0;
+  const prefill = window.__pendingAccountSearch || '';
+  window.__pendingAccountSearch = null;
   root.innerHTML = `
     <h1>Accounts</h1>
     <p class="muted">Search the Norwegian chart of accounts.</p>
-    <div class="toolbar" style="margin-top:20px;"><input type="search" id="accounts-search" placeholder="Search by number, Norwegian name, or English purpose" /></div>
+    <div class="toolbar" style="margin-top:20px;">
+      <input type="search" id="accounts-search" placeholder="Search by number, Norwegian name, or English purpose" value="${escapeHtml(prefill)}" />
+      <select id="page-size-select" style="width:auto;">
+        <option value="50">50 per page</option>
+        <option value="100">100 per page</option>
+        <option value="200">200 per page</option>
+      </select>
+    </div>
     <div class="chip-row" id="class-chips"></div>
-    <div id="accounts-list"><p class="muted">Loading accounts...</p></div>`;
+    <div id="accounts-list"><p class="muted">Loading accounts...</p></div>
+    <div id="pagination-controls" style="display:flex; justify-content:space-between; align-items:center; margin-top:16px;"></div>`;
   const chipRow = root.querySelector('#class-chips');
   const classes = [{ n: null, label: 'All classes' }, { n: 1, label: '1 Assets' }, { n: 2, label: '2 Equity/liab' }, { n: 3, label: '3 Revenue' }, { n: 4, label: '4 COGS' }, { n: 5, label: '5 Payroll' }, { n: 6, label: '6-7 Opex' }, { n: 8, label: '8 Finance/tax' }];
   chipRow.innerHTML = classes.map(c => `<span class="chip ${c.n === activeClassFilter ? 'active' : ''}" data-class="${c.n ?? ''}">${c.label}</span>`).join('');
   chipRow.querySelectorAll('.chip').forEach(chip => {
-    chip.addEventListener('click', () => { activeClassFilter = chip.dataset.class ? Number(chip.dataset.class) : null; loadAccountsList(root); });
+    chip.addEventListener('click', () => {
+      activeClassFilter = chip.dataset.class ? Number(chip.dataset.class) : null;
+      currentPage = 0;
+      chipRow.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      loadAccountsList(root);
+    });
   });
-  root.querySelector('#accounts-search').addEventListener('input', debounce(() => loadAccountsList(root), 300));
+  root.querySelector('#accounts-search').addEventListener('input', debounce(() => { currentPage = 0; loadAccountsList(root); }, 300));
+  root.querySelector('#page-size-select').value = String(pageSize);
+  root.querySelector('#page-size-select').addEventListener('change', (e) => { pageSize = Number(e.target.value); currentPage = 0; loadAccountsList(root); });
   loadAccountsList(root);
 }
 async function loadAccountsList(root) {
   const listEl = root.querySelector('#accounts-list');
+  const paginationEl = root.querySelector('#pagination-controls');
   const searchTerm = root.querySelector('#accounts-search').value.trim();
-  let query = supabase.from('accounts').select('id, account_number, name_no, purpose_en, class_number').eq('is_active', true).order('account_number');
+  let query = supabase.from('accounts').select('id, account_number, name_no, purpose_en, class_number', { count: 'exact' }).eq('is_active', true).order('account_number');
   if (activeClassFilter) query = query.eq('class_number', activeClassFilter);
   if (searchTerm) query = query.or(`account_number.ilike.%${searchTerm}%,name_no.ilike.%${searchTerm}%,purpose_en.ilike.%${searchTerm}%`);
-  const { data, error } = await query.limit(100);
-  if (error) { listEl.innerHTML = `<p class="error-text">Could not load accounts: ${error.message}</p>`; return; }
-  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No accounts match your search.</h3><p>Try a different account number or keyword.</p></div>`; return; }
+  const from = currentPage * pageSize;
+  const to = from + pageSize - 1;
+  const { data, error, count } = await query.range(from, to);
+  if (error) { listEl.innerHTML = `<p class="error-text">Could not load accounts: ${error.message}</p>`; paginationEl.innerHTML = ''; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No accounts match your search.</h3><p>Try a different account number or keyword.</p></div>`; paginationEl.innerHTML = ''; return; }
   listEl.innerHTML = `<table><thead><tr><th>Konto</th><th>Navn</th><th>Purpose</th></tr></thead><tbody>
     ${data.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.purpose_en)}</td></tr>`).join('')}
   </tbody></table>`;
   listEl.querySelectorAll('tr.row-link').forEach(row => row.addEventListener('click', () => { window.location.hash = `#/accounts/${row.dataset.id}`; }));
+
+  const totalPages = Math.max(1, Math.ceil((count || 0) / pageSize));
+  const showingFrom = from + 1;
+  const showingTo = Math.min(from + data.length, count || 0);
+  paginationEl.innerHTML = `
+    <span class="muted small">Showing ${showingFrom}-${showingTo} of ${count ?? 0}</span>
+    <div style="display:flex; gap:8px; align-items:center;">
+      <button class="btn-ghost small" id="prev-page" ${currentPage === 0 ? 'disabled' : ''}>&larr; Previous</button>
+      <span class="muted small">Page ${currentPage + 1} of ${totalPages}</span>
+      <button class="btn-ghost small" id="next-page" ${currentPage + 1 >= totalPages ? 'disabled' : ''}>Next &rarr;</button>
+    </div>`;
+  paginationEl.querySelector('#prev-page')?.addEventListener('click', () => { if (currentPage > 0) { currentPage--; loadAccountsList(root); } });
+  paginationEl.querySelector('#next-page')?.addEventListener('click', () => { if (currentPage + 1 < totalPages) { currentPage++; loadAccountsList(root); } });
 }
 async function renderAccountDetail(root, accountId) {
   root.innerHTML = `<p class="muted">Loading account...</p>`;
@@ -478,12 +519,201 @@ function showInviteModal(root) {
   });
 }
 
+// ---------- LEARN (QUIZ) ----------
+let quizQueue = [];
+let quizIndex = 0;
+let quizScore = { correct: 0, incorrect: 0 };
+
+async function renderLearn(root) {
+  root.innerHTML = `<p class="muted">Loading quiz questions...</p>`;
+  const { data, error } = await supabase.from('quiz_questions').select('*, accounts(account_number, name_no)').order('created_at');
+  if (error) { root.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) {
+    root.innerHTML = `<div class="empty-state"><h3>No quiz questions yet.</h3><p>Ask your admin to add some, or check back after the next content update.</p></div>`;
+    return;
+  }
+  quizQueue = shuffle([...data]);
+  quizIndex = 0;
+  quizScore = { correct: 0, incorrect: 0 };
+  renderQuizCard(root);
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function renderQuizCard(root) {
+  if (quizIndex >= quizQueue.length) {
+    root.innerHTML = `
+      <h1>Quiz complete</h1>
+      <p class="muted" style="margin-bottom:20px;">You got ${quizScore.correct} right and ${quizScore.incorrect} wrong out of ${quizQueue.length}.</p>
+      <button class="btn-primary" style="width:auto;" id="restart-quiz">Start again</button>
+    `;
+    root.querySelector('#restart-quiz').addEventListener('click', () => renderLearn(root));
+    return;
+  }
+  const q = quizQueue[quizIndex];
+  const options = shuffle([q.correct_answer, ...(q.wrong_answers || [])]);
+  root.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:16px;">
+      <h1>Learn</h1>
+      <span class="muted small">Question ${quizIndex + 1} of ${quizQueue.length} - ${quizScore.correct} correct so far</span>
+    </div>
+    <div class="card">
+      ${q.accounts ? `<span class="stamp small">${q.accounts.account_number}</span>` : ''}
+      <h3 style="margin-top:10px;">${escapeHtml(q.question_en)}</h3>
+      <div id="quiz-options" style="margin-top:16px; display:flex; flex-direction:column; gap:8px;">
+        ${options.map(opt => `<button class="btn-ghost quiz-option" data-answer="${escapeHtml(opt)}" style="text-align:left;">${escapeHtml(opt)}</button>`).join('')}
+      </div>
+      <p id="quiz-feedback" class="small" style="margin-top:12px;" hidden></p>
+    </div>
+  `;
+  root.querySelectorAll('.quiz-option').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const isCorrect = btn.dataset.answer === q.correct_answer;
+      const feedback = root.querySelector('#quiz-feedback');
+      feedback.hidden = false;
+      feedback.textContent = isCorrect ? 'Correct.' : `Not quite - the correct answer is: ${q.correct_answer}`;
+      feedback.style.color = isCorrect ? 'var(--forest)' : 'var(--rust)';
+      root.querySelectorAll('.quiz-option').forEach(b => b.disabled = true);
+      if (isCorrect) quizScore.correct++; else quizScore.incorrect++;
+
+      const profile = getProfile();
+      if (profile) {
+        const { data: existing } = await supabase.from('quiz_progress').select('*').eq('profile_id', profile.id).eq('question_id', q.id).maybeSingle?.() ?? { data: null };
+        if (existing) {
+          await supabase.from('quiz_progress').update({
+            correct_count: existing.correct_count + (isCorrect ? 1 : 0),
+            incorrect_count: existing.incorrect_count + (isCorrect ? 0 : 1),
+            last_attempt_at: new Date().toISOString(),
+          }).eq('id', existing.id);
+        } else {
+          await supabase.from('quiz_progress').insert({
+            profile_id: profile.id, question_id: q.id,
+            correct_count: isCorrect ? 1 : 0, incorrect_count: isCorrect ? 0 : 1,
+            last_attempt_at: new Date().toISOString(),
+          });
+        }
+      }
+
+      setTimeout(() => { quizIndex++; renderQuizCard(root); }, 1200);
+    });
+  });
+}
+
+// ---------- KNOWLEDGE LOG ----------
+async function renderKnowledge(root) {
+  root.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div><h1>Knowledge log</h1><p class="muted">Laws, trends, and notes the team has added over time.</p></div>
+      <button class="btn-ghost" id="add-knowledge-btn">Add entry</button>
+    </div>
+    <div class="chip-row" id="knowledge-chips" style="margin-top:20px;"></div>
+    <div id="knowledge-list"><p class="muted">Loading...</p></div>
+  `;
+  const chipRow = root.querySelector('#knowledge-chips');
+  const cats = [{ v: null, label: 'All' }, { v: 'law_update', label: 'Law updates' }, { v: 'trend', label: 'Trends' }, { v: 'procedure_note', label: 'Procedure notes' }, { v: 'account_note', label: 'Account notes' }, { v: 'other', label: 'Other' }];
+  let activeFilter = null;
+  chipRow.innerHTML = cats.map(c => `<span class="chip ${c.v === activeFilter ? 'active' : ''}" data-cat="${c.v ?? ''}">${c.label}</span>`).join('');
+  chipRow.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => {
+      chipRow.querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
+      chip.classList.add('active');
+      loadKnowledgeList(root, chip.dataset.cat || null);
+    });
+  });
+  root.querySelector('#add-knowledge-btn').addEventListener('click', () => showAddKnowledgeModal(root));
+  loadKnowledgeList(root, null);
+}
+
+async function loadKnowledgeList(root, category) {
+  const listEl = root.querySelector('#knowledge-list');
+  let query = supabase.from('knowledge_entries').select('*').order('created_at', { ascending: false });
+  if (category) query = query.eq('category', category);
+  const { data, error } = await query.limit(100);
+  if (error) { listEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>Nothing here yet.</h3><p>Add the first entry for this category.</p></div>`; return; }
+  listEl.innerHTML = data.map(e => `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:10px;">
+        <h3>${escapeHtml(e.title)}</h3>
+        <div style="display:flex; gap:6px; align-items:center;">
+          <span class="badge badge-class">${e.category.replace('_', ' ')}</span>
+          ${e.is_reviewed === false ? `<span class="badge badge-medium">pending review</span>` : ''}
+        </div>
+      </div>
+      <p style="margin-top:8px;">${escapeHtml(e.content)}</p>
+      ${e.source_url ? `<a href="${escapeHtml(e.source_url)}" target="_blank" rel="noopener" class="small">Source</a>` : ''}
+      <p class="muted small" style="margin-top:8px;">${timeAgo(e.created_at)}</p>
+      ${e.is_reviewed === false && hasRole('senior') ? `<button class="btn-ghost small mark-reviewed" data-id="${e.id}" style="margin-top:8px;">Mark reviewed</button>` : ''}
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.mark-reviewed').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await supabase.from('knowledge_entries').update({ is_reviewed: true }).eq('id', btn.dataset.id);
+      loadKnowledgeList(root, category);
+    });
+  });
+}
+
+function showAddKnowledgeModal(root) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Add knowledge entry</h2>
+      <form id="add-knowledge-form">
+        <label>Title</label><input type="text" id="k-title" required />
+        <label>Category</label>
+        <select id="k-category">
+          <option value="law_update">Law update</option>
+          <option value="trend">Trend</option>
+          <option value="procedure_note">Procedure note</option>
+          <option value="account_note">Account note</option>
+          <option value="other">Other</option>
+        </select>
+        <label>Content</label><textarea id="k-content" rows="4" required></textarea>
+        <label>Source URL (optional)</label><input type="url" id="k-source" placeholder="https://" />
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button type="button" class="btn-ghost" id="cancel-knowledge">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0;">Save entry</button>
+        </div>
+        <p id="knowledge-error" class="error-text" hidden></p>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-knowledge').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#add-knowledge-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const title = overlay.querySelector('#k-title').value.trim();
+    const category = overlay.querySelector('#k-category').value;
+    const content = overlay.querySelector('#k-content').value.trim();
+    const source_url = overlay.querySelector('#k-source').value.trim();
+    const { error } = await supabase.from('knowledge_entries').insert({
+      title, category, content, source_url: source_url || null, added_by: getProfile()?.id, is_reviewed: true,
+    });
+    if (error) {
+      const errEl = overlay.querySelector('#knowledge-error');
+      errEl.textContent = error.message;
+      errEl.hidden = false;
+      return;
+    }
+    overlay.remove();
+    loadKnowledgeList(root, null);
+  });
+}
+
 // ---------- ROUTER / BOOT ----------
 const loginScreen = document.getElementById('login-screen');
 const appShell = document.getElementById('app-shell');
 const viewRoot = document.getElementById('view-root');
 const sidebar = document.getElementById('sidebar');
-const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, admin: renderAdmin };
+const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, learn: renderLearn, knowledge: renderKnowledge, admin: renderAdmin };
 
 async function boot() {
   const session = await getSession();
@@ -511,8 +741,12 @@ document.getElementById('login-form').addEventListener('submit', async (e) => {
 document.getElementById('logout-btn').addEventListener('click', async () => { await signOut(); window.location.hash = ''; showLogin(); });
 document.getElementById('global-search').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
-    window.location.hash = '#/accounts';
-    setTimeout(() => { const box = document.getElementById('accounts-search'); if (box) { box.value = e.target.value; box.dispatchEvent(new Event('input')); } }, 50);
+    window.__pendingAccountSearch = e.target.value;
+    if (window.location.hash === '#/accounts') {
+      router();
+    } else {
+      window.location.hash = '#/accounts';
+    }
   }
 });
 async function router() {
