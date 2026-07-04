@@ -749,7 +749,7 @@ async function loadLawResults(root) {
   contentEl.innerHTML = `<p class="muted">Searching...</p>`;
   const { data, error } = await supabase
     .from('law_articles')
-    .select('*, laws(short_name_no, full_name_en, official_url)')
+    .select('*, laws(id, short_name_no, full_name_en, official_url)')
     .or(`title_en.ilike.%${term}%,summary_en.ilike.%${term}%,title_no.ilike.%${term}%,paragraph_no.ilike.%${term}%`)
     .limit(50);
   if (error) { contentEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
@@ -760,7 +760,7 @@ async function loadLawResults(root) {
       <div class="card" style="margin-bottom:10px;">
         <div style="display:flex; justify-content:space-between; align-items:baseline;">
           <h3>${escapeHtml(a.laws?.short_name_no || '')} ${escapeHtml(a.paragraph_no || '')}</h3>
-          ${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
+          <a href="#/laws/${a.laws?.id}" class="small" style="margin-right:12px;">View all articles in ${escapeHtml(a.laws?.short_name_no || '')}</a>${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
         </div>
         <p class="muted small" style="margin-top:2px;">${escapeHtml(a.title_en || '')}</p>
         <p style="margin-top:8px;">${escapeHtml(a.summary_en)}</p>
@@ -816,7 +816,7 @@ async function runGlobalSearch(root, term) {
   const [acctRes, lawRes] = await Promise.all([
     supabase.from('accounts').select('id, account_number, name_no, purpose_en').eq('is_active', true)
       .or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%,purpose_en.ilike.%${term}%`).limit(20),
-    supabase.from('law_articles').select('*, laws(short_name_no, full_name_en, official_url)')
+    supabase.from('law_articles').select('*, laws(id, short_name_no, full_name_en, official_url)')
       .or(`title_en.ilike.%${term}%,summary_en.ilike.%${term}%,title_no.ilike.%${term}%,paragraph_no.ilike.%${term}%`).limit(20),
   ]);
 
@@ -834,7 +834,7 @@ async function runGlobalSearch(root, term) {
       <div class="card" style="margin-bottom:10px;">
         <div style="display:flex; justify-content:space-between; align-items:baseline;">
           <h3>${escapeHtml(a.laws?.short_name_no || '')} ${escapeHtml(a.paragraph_no || '')}</h3>
-          ${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
+          <a href="#/laws/${a.laws?.id}" class="small" style="margin-right:12px;">View all articles in ${escapeHtml(a.laws?.short_name_no || '')}</a>${a.laws?.official_url ? `<a href="${escapeHtml(a.laws.official_url)}" target="_blank" rel="noopener" class="small">Official source</a>` : ''}
         </div>
         <p class="muted small" style="margin-top:2px;">${escapeHtml(a.title_en || '')}</p>
         <p style="margin-top:8px;">${escapeHtml(a.summary_en)}</p>
