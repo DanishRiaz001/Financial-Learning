@@ -6,11 +6,86 @@
 <title>Kontoplan — Norwegian accounting reference</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/styles.css" />
+<style>
+:root {
+  --ink: #14283D; --paper: #F7F6F1; --paper-raised: #FFFFFF;
+  --fjord: #2C6E8E; --fjord-dark: #1F5063; --slate: #5B6774; --slate-light: #8B94A0;
+  --border: #E1DFD6; --border-strong: #C9C6B9;
+  --amber: #C97A2E; --amber-bg: #FBEEE1; --rust: #B34A3A; --rust-bg: #FBE9E6;
+  --forest: #3B6E52; --forest-bg: #E9F1EC; --radius: 6px; --radius-lg: 10px;
+  --font-display: 'Fraunces', serif; --font-body: 'Inter', -apple-system, sans-serif; --font-mono: 'IBM Plex Mono', monospace;
+}
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { margin: 0; font-family: var(--font-body); background: var(--paper); color: var(--ink); font-size: 15px; line-height: 1.55; }
+h1, h2, h3 { font-family: var(--font-display); font-weight: 600; margin: 0; color: var(--ink); }
+h1 { font-size: 28px; } h2 { font-size: 20px; } h3 { font-size: 16px; }
+.muted { color: var(--slate); } .small { font-size: 13px; }
+a { color: var(--fjord); text-decoration: none; }
+input, select, textarea {
+  font-family: var(--font-body); font-size: 14px; padding: 9px 12px;
+  border: 1px solid var(--border-strong); border-radius: var(--radius);
+  background: var(--paper-raised); color: var(--ink); width: 100%;
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--fjord); box-shadow: 0 0 0 3px rgba(44,110,142,0.15); }
+label { display: block; font-size: 13px; font-weight: 500; margin: 14px 0 6px; color: var(--ink); }
+button { font-family: var(--font-body); font-size: 14px; font-weight: 500; cursor: pointer; border-radius: var(--radius); padding: 9px 16px; border: none; }
+.btn-primary { background: var(--fjord); color: #fff; width: 100%; margin-top: 20px; }
+.btn-primary:hover { background: var(--fjord-dark); }
+.btn-ghost { background: transparent; border: 1px solid var(--border-strong); color: var(--ink); }
+.btn-ghost:hover { background: var(--paper-raised); }
+.error-text { color: var(--rust); font-size: 13px; margin-top: 10px; }
+.stamp { font-family: var(--font-mono); font-weight: 500; font-size: 15px; color: var(--ink); border-left: 3px solid var(--fjord); padding-left: 8px; display: inline-block; }
+.stamp.small { font-size: 12px; padding-left: 6px; border-left-width: 2px; }
+.stamp.large { font-size: 24px; padding-left: 10px; }
+.login-screen { min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--paper); }
+.login-card { width: 360px; padding: 40px 36px; background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.login-mark { display: flex; align-items: center; gap: 10px; margin-bottom: 28px; }
+.mark-label { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+.login-card h1 { margin-bottom: 6px; }
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; }
+.topbar { display: flex; align-items: center; gap: 20px; padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--paper-raised); }
+.brand { display: flex; align-items: center; gap: 8px; min-width: 160px; }
+.brand-name { font-family: var(--font-display); font-weight: 600; font-size: 16px; }
+#global-search { flex: 1; max-width: 520px; }
+.topbar-user { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+.body-layout { display: flex; flex: 1; }
+.sidebar { width: 190px; padding: 20px 12px; border-right: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
+.sidebar a { color: var(--slate); font-size: 14px; padding: 9px 12px; border-radius: var(--radius); display: flex; align-items: center; gap: 10px; }
+.sidebar a:hover { background: var(--paper); }
+.sidebar a.active { background: #E9F1F5; color: var(--fjord-dark); font-weight: 500; }
+.content { flex: 1; padding: 28px 32px; max-width: 1080px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 20px 0 28px; }
+.stat-card { background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 16px; }
+.stat-card .value { font-family: var(--font-display); font-size: 26px; font-weight: 600; margin-top: 4px; }
+.card { background: var(--paper-raised); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; color: var(--slate); font-weight: 500; padding: 8px 12px; border-bottom: 1px solid var(--border); }
+td { padding: 12px; border-bottom: 1px solid var(--border); font-size: 14px; vertical-align: middle; }
+tr.row-link { cursor: pointer; }
+tr.row-link:hover { background: #FBFAF6; }
+.badge { font-size: 11px; padding: 3px 9px; border-radius: 20px; font-weight: 500; display: inline-block; }
+.badge-low { background: var(--forest-bg); color: var(--forest); }
+.badge-medium { background: var(--amber-bg); color: var(--amber); }
+.badge-high { background: var(--rust-bg); color: var(--rust); }
+.badge-class { background: #E9F1F5; color: var(--fjord-dark); }
+.toolbar { display: flex; gap: 10px; margin-bottom: 16px; }
+.toolbar input[type="search"] { flex: 1; }
+.chip-row { display: flex; gap: 6px; margin-bottom: 18px; flex-wrap: wrap; }
+.chip { font-size: 12px; padding: 5px 12px; border: 1px solid var(--border-strong); border-radius: 20px; color: var(--slate); cursor: pointer; }
+.chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 20px; }
+.section-label { font-size: 12px; color: var(--slate); font-weight: 500; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em; }
+.list-item { font-size: 13px; padding: 10px 12px; background: var(--paper); border-radius: var(--radius); margin-bottom: 6px; }
+.law-ref { font-size: 12px; color: var(--fjord-dark); margin-top: 4px; }
+.empty-state { text-align: center; padding: 48px 20px; color: var(--slate); }
+.empty-state h3 { margin-bottom: 6px; color: var(--ink); }
+.modal-overlay { position: fixed; inset: 0; background: rgba(20,40,61,0.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: var(--paper-raised); border-radius: var(--radius-lg); padding: 24px 28px; width: 420px; max-height: 80vh; overflow-y: auto; }
+</style>
 </head>
 <body>
 
-<!-- LOGIN SCREEN -->
 <div id="login-screen" class="login-screen">
   <div class="login-card">
     <div class="login-mark">
@@ -30,7 +105,6 @@
   </div>
 </div>
 
-<!-- APP SHELL -->
 <div id="app-shell" class="app-shell" hidden>
   <header class="topbar">
     <div class="brand">
@@ -43,7 +117,6 @@
       <button id="logout-btn" class="btn-ghost small">Sign out</button>
     </div>
   </header>
-
   <div class="body-layout">
     <nav class="sidebar" id="sidebar">
       <a href="#/home" data-route="home">Home</a>
@@ -52,13 +125,407 @@
       <a href="#/procedures" data-route="procedures">Procedures</a>
       <a href="#/admin" data-route="admin" id="nav-admin">Admin</a>
     </nav>
-
-    <main class="content" id="view-root">
-      <!-- views render here -->
-    </main>
+    <main class="content" id="view-root"></main>
   </div>
 </div>
 
-<script type="module" src="js/app.js"></script>
+<script type="module">
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const SUPABASE_URL = 'https://lgdquwndwcnvaildaatq.supabase.co';
+const SUPABASE_ANON_KEY = 'sb_publishable_jpx4rxaHPRdOV3hrH4VEew_kjyF9kyG';
+const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+let currentProfile = null;
+function getProfile() { return currentProfile; }
+async function loadProfile(userId) {
+  const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+  if (error) { console.error('Could not load profile', error); return null; }
+  currentProfile = data;
+  return data;
+}
+async function signIn(email, password) {
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  if (error) throw error;
+  const profile = await loadProfile(data.user.id);
+  if (!profile || profile.is_active === false) {
+    await supabase.auth.signOut();
+    throw new Error('Your account has been deactivated. Contact your admin.');
+  }
+  return profile;
+}
+async function signOut() { await supabase.auth.signOut(); currentProfile = null; }
+async function getSession() { const { data } = await supabase.auth.getSession(); return data.session; }
+function hasRole(minRole) {
+  if (!currentProfile) return false;
+  const role = currentProfile.role;
+  if (role === 'admin') return true;
+  if (minRole === 'senior') return role === 'senior';
+  if (minRole === 'learner') return role === 'senior' || role === 'learner';
+  if (minRole === 'viewer') return true;
+  return false;
+}
+function isAdmin() { return currentProfile?.role === 'admin'; }
+
+function escapeHtml(str) {
+  const div = document.createElement('div');
+  div.textContent = str ?? '';
+  return div.innerHTML;
+}
+function debounce(fn, ms) {
+  let t;
+  return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+}
+function timeAgo(dateStr) {
+  const diff = Date.now() - new Date(dateStr).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return 'today';
+  if (days === 1) return '1 day ago';
+  return `${days} days ago`;
+}
+function emptyLine(text = 'Nothing recorded yet.') {
+  return `<div class="muted small" style="padding:8px 0;">${text}</div>`;
+}
+function renderList(items, fn) {
+  if (!items || !items.length) return emptyLine();
+  return items.map(i => `<div class="list-item">${fn(i)}</div>`).join('');
+}
+
+// ---------- HOME ----------
+async function renderHome(root) {
+  root.innerHTML = `<p class="muted">Loading your dashboard...</p>`;
+  const [accountsCount, companiesCount, proceduresCount, recentEntries] = await Promise.all([
+    supabase.from('accounts').select('id', { count: 'exact', head: true }),
+    supabase.from('companies').select('id', { count: 'exact', head: true }),
+    supabase.from('procedures').select('id', { count: 'exact', head: true }),
+    supabase.from('knowledge_entries').select('*').order('created_at', { ascending: false }).limit(5),
+  ]);
+  const profile = getProfile();
+  const firstName = profile?.full_name?.split(' ')[0] || profile?.email?.split('@')[0] || 'there';
+  const activityHtml = (recentEntries.data || []).length
+    ? recentEntries.data.map(e => `
+        <div class="list-item">
+          <div>${escapeHtml(e.title)}</div>
+          <div class="muted small" style="margin-top:2px;">${e.category.replace('_',' ')} - ${timeAgo(e.created_at)}</div>
+        </div>`).join('')
+    : `<div class="empty-state"><h3>Nothing logged yet.</h3><p>Add a law, trend, or note from the knowledge log to see it here.</p></div>`;
+  root.innerHTML = `
+    <h1>Welcome back, ${escapeHtml(firstName)}</h1>
+    <p class="muted">Here is what has changed since your last visit.</p>
+    <div class="stat-grid">
+      <div class="stat-card"><div class="muted small">Accounts</div><div class="value">${accountsCount.count ?? 0}</div></div>
+      <div class="stat-card"><div class="muted small">Companies</div><div class="value">${companiesCount.count ?? 0}</div></div>
+      <div class="stat-card"><div class="muted small">Procedures</div><div class="value">${proceduresCount.count ?? 0}</div></div>
+      <div class="stat-card"><div class="muted small">Knowledge log entries</div><div class="value">${recentEntries.data?.length ?? 0}</div></div>
+    </div>
+    <div class="section-label">Recent activity</div>
+    ${activityHtml}`;
+}
+
+// ---------- ACCOUNTS ----------
+let activeClassFilter = null;
+async function renderAccounts(root, params) {
+  if (params?.id) return renderAccountDetail(root, params.id);
+  root.innerHTML = `
+    <h1>Accounts</h1>
+    <p class="muted">Search the Norwegian chart of accounts.</p>
+    <div class="toolbar" style="margin-top:20px;"><input type="search" id="accounts-search" placeholder="Search by number, Norwegian name, or English purpose" /></div>
+    <div class="chip-row" id="class-chips"></div>
+    <div id="accounts-list"><p class="muted">Loading accounts...</p></div>`;
+  const chipRow = root.querySelector('#class-chips');
+  const classes = [{ n: null, label: 'All classes' }, { n: 1, label: '1 Assets' }, { n: 2, label: '2 Equity/liab' }, { n: 3, label: '3 Revenue' }, { n: 4, label: '4 COGS' }, { n: 5, label: '5 Payroll' }, { n: 6, label: '6-7 Opex' }, { n: 8, label: '8 Finance/tax' }];
+  chipRow.innerHTML = classes.map(c => `<span class="chip ${c.n === activeClassFilter ? 'active' : ''}" data-class="${c.n ?? ''}">${c.label}</span>`).join('');
+  chipRow.querySelectorAll('.chip').forEach(chip => {
+    chip.addEventListener('click', () => { activeClassFilter = chip.dataset.class ? Number(chip.dataset.class) : null; loadAccountsList(root); });
+  });
+  root.querySelector('#accounts-search').addEventListener('input', debounce(() => loadAccountsList(root), 300));
+  loadAccountsList(root);
+}
+async function loadAccountsList(root) {
+  const listEl = root.querySelector('#accounts-list');
+  const searchTerm = root.querySelector('#accounts-search').value.trim();
+  let query = supabase.from('accounts').select('id, account_number, name_no, purpose_en, class_number').eq('is_active', true).order('account_number');
+  if (activeClassFilter) query = query.eq('class_number', activeClassFilter);
+  if (searchTerm) query = query.or(`account_number.ilike.%${searchTerm}%,name_no.ilike.%${searchTerm}%,purpose_en.ilike.%${searchTerm}%`);
+  const { data, error } = await query.limit(100);
+  if (error) { listEl.innerHTML = `<p class="error-text">Could not load accounts: ${error.message}</p>`; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No accounts match your search.</h3><p>Try a different account number or keyword.</p></div>`; return; }
+  listEl.innerHTML = `<table><thead><tr><th>Konto</th><th>Navn</th><th>Purpose</th></tr></thead><tbody>
+    ${data.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.purpose_en)}</td></tr>`).join('')}
+  </tbody></table>`;
+  listEl.querySelectorAll('tr.row-link').forEach(row => row.addEventListener('click', () => { window.location.hash = `#/accounts/${row.dataset.id}`; }));
+}
+async function renderAccountDetail(root, accountId) {
+  root.innerHTML = `<p class="muted">Loading account...</p>`;
+  const [accountRes, examplesRes, requirementsRes, auditRes, lawRefsRes, proceduresRes, companiesRes] = await Promise.all([
+    supabase.from('accounts').select('*, account_classes(name_no, name_en), vat_codes(name_en, rate_percent), saf_t_codes(code)').eq('id', accountId).single(),
+    supabase.from('account_examples').select('*').eq('account_id', accountId).order('order_index'),
+    supabase.from('account_requirements').select('*, law_articles(paragraph_no, laws(short_name_no, full_name_en))').eq('account_id', accountId),
+    supabase.from('account_audit_requirements').select('*').eq('account_id', accountId),
+    supabase.from('account_law_references').select('law_articles(paragraph_no, title_en, summary_en, laws(short_name_no, full_name_en))').eq('account_id', accountId),
+    supabase.from('procedure_related_accounts').select('procedures(id, title_en, category)').eq('account_id', accountId),
+    hasRole('senior') ? supabase.from('company_effective_accounts').select('*').eq('account_id', accountId) : Promise.resolve({ data: [] }),
+  ]);
+  if (accountRes.error || !accountRes.data) { root.innerHTML = `<p class="error-text">Account not found.</p><a href="#/accounts">Back to accounts</a>`; return; }
+  const a = accountRes.data;
+  root.innerHTML = `
+    <a href="#/accounts" class="muted small">&larr; Back to accounts</a>
+    <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-top:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+      <div>
+        <span class="badge badge-class">${a.account_classes ? `Class ${a.class_number} - ${a.account_classes.name_en}` : `Class ${a.class_number}`}</span>
+        <h1 style="margin-top:10px;"><span class="stamp large">${a.account_number}</span> ${escapeHtml(a.name_no)}</h1>
+        <p class="muted" style="margin-top:6px;">${escapeHtml(a.purpose_en)}</p>
+      </div>
+      <div class="muted small" style="text-align:right;">
+        <p>VAT: ${a.vat_codes ? `${escapeHtml(a.vat_codes.name_en)} (${a.vat_codes.rate_percent}%)` : 'not applicable'}</p>
+        <p>SAF-T: ${a.saf_t_codes ? escapeHtml(a.saf_t_codes.code) : 'not mapped'}</p>
+      </div>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <div class="section-label">Example transactions</div>
+        ${renderList(examplesRes.data, e => e.example_en)}
+        <div class="section-label" style="margin-top:20px;">Bookkeeping requirements</div>
+        ${renderList(requirementsRes.data, r => `${escapeHtml(r.description_en)} ${r.law_articles ? `<div class="law-ref">${escapeHtml(r.law_articles.laws?.short_name_no || '')} ${escapeHtml(r.law_articles.paragraph_no || '')}</div>` : ''}`)}
+        <div class="section-label" style="margin-top:20px;">Audit checkpoints</div>
+        ${(auditRes.data || []).map(x => `<div class="list-item"><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;"><div>${escapeHtml(x.description_en)}</div><span class="badge badge-${x.risk_level}">${x.risk_level}</span></div>${x.isa_standard_ref ? `<div class="muted small" style="margin-top:4px;">${escapeHtml(x.isa_standard_ref)}</div>` : ''}</div>`).join('') || emptyLine()}
+      </div>
+      <div>
+        <div class="section-label">Law references</div>
+        ${(lawRefsRes.data || []).map(x => `<div class="list-item"><div>${escapeHtml(x.law_articles?.title_en || x.law_articles?.paragraph_no || '')}</div><div class="muted small" style="margin-top:4px;">${escapeHtml(x.law_articles?.summary_en || '')}</div></div>`).join('') || emptyLine()}
+        <div class="section-label" style="margin-top:20px;">Linked procedures</div>
+        ${(proceduresRes.data || []).map(x => `<div class="list-item">${escapeHtml(x.procedures?.title_en || '')}</div>`).join('') || emptyLine()}
+        ${hasRole('senior') ? `<div class="section-label" style="margin-top:20px;">Companies using this account</div>${(companiesRes.data || []).map(x => `<div class="list-item">${escapeHtml(x.company_id)}</div>`).join('') || emptyLine('No companies linked yet.')}` : ''}
+      </div>
+    </div>`;
+}
+
+// ---------- COMPANIES ----------
+async function renderCompanies(root, params) {
+  if (params?.id) return renderCompanyDetail(root, params.id);
+  const canWrite = hasRole('senior');
+  root.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div><h1>Companies</h1><p class="muted">Search for a company to see its accounts and invoice contact.</p></div>
+      ${canWrite ? `<button class="btn-ghost" id="add-company-btn">Add company</button>` : ''}
+    </div>
+    <div class="toolbar" style="margin-top:20px;"><input type="search" id="company-search" placeholder="Search by company name or org number" /></div>
+    <div id="company-list"><p class="muted">Loading companies...</p></div>`;
+  if (!canWrite) {
+    root.querySelector('#company-list').innerHTML = `<div class="empty-state"><h3>Companies are restricted.</h3><p>Invoice contact details are only visible to senior and admin users. Ask your admin for access if you need this.</p></div>`;
+    return;
+  }
+  root.querySelector('#company-search').addEventListener('input', debounce(() => loadCompanyList(root), 300));
+  root.querySelector('#add-company-btn')?.addEventListener('click', () => showAddCompanyModal(root));
+  loadCompanyList(root);
+}
+async function loadCompanyList(root) {
+  const listEl = root.querySelector('#company-list');
+  const term = root.querySelector('#company-search').value.trim();
+  let query = supabase.from('companies').select('id, name, org_number, industry').eq('is_active', true).order('name');
+  if (term) query = query.or(`name.ilike.%${term}%,org_number.ilike.%${term}%`);
+  const { data, error } = await query.limit(100);
+  if (error) { listEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No companies found.</h3><p>Add one to get started.</p></div>`; return; }
+  listEl.innerHTML = `<table><thead><tr><th>Company</th><th>Org number</th><th>Industry</th></tr></thead><tbody>
+    ${data.map(c => `<tr class="row-link" data-id="${c.id}"><td>${escapeHtml(c.name)}</td><td class="muted">${escapeHtml(c.org_number || '-')}</td><td class="muted">${escapeHtml(c.industry || '-')}</td></tr>`).join('')}
+  </tbody></table>`;
+  listEl.querySelectorAll('tr.row-link').forEach(row => row.addEventListener('click', () => { window.location.hash = `#/companies/${row.dataset.id}`; }));
+}
+async function renderCompanyDetail(root, companyId) {
+  root.innerHTML = `<p class="muted">Loading company...</p>`;
+  const [companyRes, contactsRes, accountsRes] = await Promise.all([
+    supabase.from('companies').select('*').eq('id', companyId).single(),
+    supabase.from('company_contacts').select('*').eq('company_id', companyId),
+    supabase.from('company_effective_accounts').select('*').eq('company_id', companyId),
+  ]);
+  if (companyRes.error || !companyRes.data) { root.innerHTML = `<p class="error-text">Company not found.</p><a href="#/companies">Back to companies</a>`; return; }
+  const c = companyRes.data;
+  const invoiceContact = (contactsRes.data || []).find(x => x.contact_type === 'invoice');
+  root.innerHTML = `
+    <a href="#/companies" class="muted small">&larr; Back to companies</a>
+    <div style="margin-top:16px; padding-bottom:16px; border-bottom:1px solid var(--border);">
+      <h1>${escapeHtml(c.name)}</h1>
+      <p class="muted">${escapeHtml(c.org_number || '')} ${c.industry ? `- ${escapeHtml(c.industry)}` : ''}</p>
+    </div>
+    <div class="detail-grid">
+      <div>
+        <div class="section-label">Invoice contact</div>
+        ${invoiceContact ? `<div class="card"><p style="font-weight:500;">${escapeHtml(invoiceContact.contact_name || 'No name on file')}</p><p class="muted small" style="margin-top:4px;">${escapeHtml(invoiceContact.email)}</p></div>` : `<div class="empty-state"><h3>No invoice contact yet.</h3><p>Add one so this shows up whenever anyone searches this company.</p></div>`}
+        <div class="section-label" style="margin-top:20px;">Notes</div>
+        <p class="muted">${escapeHtml(c.notes || 'No notes on file.')}</p>
+      </div>
+      <div>
+        <div class="section-label">Accounts used by this company</div>
+        ${(accountsRes.data || []).map(a => `<div class="list-item"><span class="stamp small">${a.account_number}</span> ${escapeHtml(a.name_no)} ${a.is_default ? '<span class="badge badge-class" style="margin-left:6px;">default</span>' : ''}</div>`).join('') || `<div class="muted small">No accounts linked yet.</div>`}
+      </div>
+    </div>`;
+}
+function showAddCompanyModal(root) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal"><h2>Add company</h2><form id="add-company-form">
+    <label>Company name</label><input type="text" id="c-name" required />
+    <label>Org number</label><input type="text" id="c-org" />
+    <label>Industry</label><input type="text" id="c-industry" />
+    <label>Invoice contact email</label><input type="email" id="c-email" placeholder="invoices@company.no" />
+    <div style="display:flex; gap:10px; margin-top:20px;"><button type="button" class="btn-ghost" id="cancel-add">Cancel</button><button type="submit" class="btn-primary" style="margin-top:0;">Save company</button></div>
+    <p id="add-company-error" class="error-text" hidden></p></form></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-add').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#add-company-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = overlay.querySelector('#c-name').value.trim();
+    const org = overlay.querySelector('#c-org').value.trim();
+    const industry = overlay.querySelector('#c-industry').value.trim();
+    const email = overlay.querySelector('#c-email').value.trim();
+    const { data: company, error } = await supabase.from('companies').insert({ name, org_number: org || null, industry: industry || null, created_by: getProfile()?.id }).select().single();
+    if (error) { const errEl = overlay.querySelector('#add-company-error'); errEl.textContent = error.message; errEl.hidden = false; return; }
+    if (email) await supabase.from('company_contacts').insert({ company_id: company.id, contact_type: 'invoice', email });
+    overlay.remove();
+    loadCompanyList(root);
+  });
+}
+
+// ---------- PROCEDURES ----------
+async function renderProcedures(root, params) {
+  if (params?.id) return renderProcedureDetail(root, params.id);
+  root.innerHTML = `<h1>Procedures</h1><p class="muted">Step-by-step reconciliations and review workflows.</p><div id="procedures-list" style="margin-top:20px;"><p class="muted">Loading...</p></div>`;
+  const { data, error } = await supabase.from('procedures').select('*').order('title_en');
+  const listEl = root.querySelector('#procedures-list');
+  if (error) { listEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No procedures yet.</h3><p>Add your first walkthrough, like a bank reconciliation, to get started.</p></div>`; return; }
+  listEl.innerHTML = data.map(p => `<div class="card row-link" data-id="${p.id}" style="margin-bottom:10px; cursor:pointer;"><h3>${escapeHtml(p.title_en)}</h3><p class="muted small" style="margin-top:4px;">${escapeHtml(p.description_en || '')}</p></div>`).join('');
+  listEl.querySelectorAll('.row-link').forEach(row => row.addEventListener('click', () => { window.location.hash = `#/procedures/${row.dataset.id}`; }));
+}
+async function renderProcedureDetail(root, procedureId) {
+  root.innerHTML = `<p class="muted">Loading procedure...</p>`;
+  const [procRes, stepsRes] = await Promise.all([
+    supabase.from('procedures').select('*').eq('id', procedureId).single(),
+    supabase.from('procedure_steps').select('*').eq('procedure_id', procedureId).order('step_order'),
+  ]);
+  if (procRes.error || !procRes.data) { root.innerHTML = `<p class="error-text">Procedure not found.</p><a href="#/procedures">Back to procedures</a>`; return; }
+  const stepsHtml = await Promise.all((stepsRes.data || []).map(async (s, i) => {
+    let imageHtml = '';
+    if (s.image_path) {
+      const { data: signed } = await supabase.storage.from('procedure-images').createSignedUrl(s.image_path, 3600);
+      if (signed?.signedUrl) imageHtml = `<img src="${signed.signedUrl}" alt="Screenshot for step ${i + 1}" style="max-width:100%; border-radius:var(--radius); margin-top:10px; border:1px solid var(--border);" />`;
+    }
+    return `<div class="card" style="margin-bottom:12px;"><div class="muted small">Step ${i + 1}</div><h3 style="margin-top:4px;">${escapeHtml(s.title)}</h3><p style="margin-top:8px;">${escapeHtml(s.content_en)}</p>${s.warning_note ? `<p class="law-ref" style="color:var(--amber);">${escapeHtml(s.warning_note)}</p>` : ''}${imageHtml}</div>`;
+  }));
+  root.innerHTML = `<a href="#/procedures" class="muted small">&larr; Back to procedures</a><h1 style="margin-top:16px;">${escapeHtml(procRes.data.title_en)}</h1><p class="muted" style="margin-bottom:20px;">${escapeHtml(procRes.data.description_en || '')}</p>${stepsHtml.join('') || `<div class="empty-state"><h3>No steps added yet.</h3></div>`}`;
+}
+
+// ---------- ADMIN ----------
+async function renderAdmin(root) {
+  if (!isAdmin()) { root.innerHTML = `<div class="empty-state"><h3>Admin access only.</h3><p>This section is restricted to admin users.</p></div>`; return; }
+  root.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div><h1>Users</h1><p class="muted">Invite new users, manage roles, and deactivate access.</p></div>
+      <button class="btn-ghost" id="invite-btn">Invite user</button>
+    </div>
+    <div id="users-list" style="margin-top:20px;"><p class="muted">Loading users...</p></div>`;
+  root.querySelector('#invite-btn').addEventListener('click', () => showInviteModal(root));
+  loadUsers(root);
+}
+async function loadUsers(root) {
+  const listEl = root.querySelector('#users-list');
+  const { data, error } = await supabase.from('profiles').select('*').order('created_at', { ascending: false });
+  if (error) { listEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  listEl.innerHTML = `<table><thead><tr><th>Email</th><th>Role</th><th>Status</th><th></th></tr></thead><tbody>
+    ${data.map(u => `<tr>
+      <td>${escapeHtml(u.email)}</td>
+      <td><select data-id="${u.id}" class="role-select" style="width:auto;">${['admin','senior','learner','viewer'].map(r => `<option value="${r}" ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+      <td><span class="badge ${u.is_active ? 'badge-low' : 'badge-high'}">${u.is_active ? 'Active' : 'Deactivated'}</span></td>
+      <td><button class="btn-ghost small toggle-active" data-id="${u.id}" data-active="${u.is_active}">${u.is_active ? 'Deactivate' : 'Reactivate'}</button></td>
+    </tr>`).join('')}
+  </tbody></table>`;
+  listEl.querySelectorAll('.role-select').forEach(sel => sel.addEventListener('change', async () => { await supabase.from('profiles').update({ role: sel.value }).eq('id', sel.dataset.id); }));
+  listEl.querySelectorAll('.toggle-active').forEach(btn => btn.addEventListener('click', async () => {
+    const newState = btn.dataset.active !== 'true';
+    await supabase.from('profiles').update({ is_active: newState }).eq('id', btn.dataset.id);
+    loadUsers(root);
+  }));
+}
+function showInviteModal(root) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `<div class="modal"><h2>Invite user</h2>
+    <p class="muted small" style="margin-top:8px;">This requires the invite-user edge function to be deployed in Supabase. Ask your developer if this hasn't been set up yet.</p>
+    <form id="invite-form">
+      <label>Email</label><input type="email" id="invite-email" required />
+      <label>Role</label><select id="invite-role"><option value="learner">learner</option><option value="senior">senior</option><option value="viewer">viewer</option><option value="admin">admin</option></select>
+      <div style="display:flex; gap:10px; margin-top:20px;"><button type="button" class="btn-ghost" id="cancel-invite">Cancel</button><button type="submit" class="btn-primary" style="margin-top:0;">Send invite</button></div>
+      <p id="invite-error" class="error-text" hidden></p>
+    </form></div>`;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-invite').addEventListener('click', () => overlay.remove());
+  overlay.querySelector('#invite-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const email = overlay.querySelector('#invite-email').value.trim();
+    const role = overlay.querySelector('#invite-role').value;
+    const errEl = overlay.querySelector('#invite-error');
+    try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const res = await supabase.functions.invoke('invite-user', { body: { email, role }, headers: { Authorization: `Bearer ${sessionData.session.access_token}` } });
+      if (res.error) throw res.error;
+      overlay.remove();
+      loadUsers(root);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not send invite. Is the edge function deployed?';
+      errEl.hidden = false;
+    }
+  });
+}
+
+// ---------- ROUTER / BOOT ----------
+const loginScreen = document.getElementById('login-screen');
+const appShell = document.getElementById('app-shell');
+const viewRoot = document.getElementById('view-root');
+const sidebar = document.getElementById('sidebar');
+const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, admin: renderAdmin };
+
+async function boot() {
+  const session = await getSession();
+  if (session) { await loadProfile(session.user.id); showApp(session.user.email); }
+  else showLogin();
+}
+function showLogin() { loginScreen.hidden = false; appShell.hidden = true; }
+function showApp(email) {
+  loginScreen.hidden = true; appShell.hidden = false;
+  document.getElementById('user-email').textContent = email;
+  document.getElementById('nav-admin').style.display = isAdmin() ? 'flex' : 'none';
+  router();
+}
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('login-email').value.trim();
+  const password = document.getElementById('login-password').value;
+  const errorEl = document.getElementById('login-error');
+  const submitBtn = document.getElementById('login-submit');
+  errorEl.hidden = true; submitBtn.textContent = 'Signing in...'; submitBtn.disabled = true;
+  try { await signIn(email, password); showApp(email); }
+  catch (err) { errorEl.textContent = err.message || 'Could not sign in. Check your email and password.'; errorEl.hidden = false; }
+  finally { submitBtn.textContent = 'Sign in'; submitBtn.disabled = false; }
+});
+document.getElementById('logout-btn').addEventListener('click', async () => { await signOut(); window.location.hash = ''; showLogin(); });
+document.getElementById('global-search').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    window.location.hash = '#/accounts';
+    setTimeout(() => { const box = document.getElementById('accounts-search'); if (box) { box.value = e.target.value; box.dispatchEvent(new Event('input')); } }, 50);
+  }
+});
+async function router() {
+  const hash = window.location.hash.replace('#/', '') || 'home';
+  const [routeName, id] = hash.split('/');
+  const renderFn = routes[routeName] || renderHome;
+  sidebar.querySelectorAll('a').forEach(a => a.classList.toggle('active', a.dataset.route === routeName));
+  viewRoot.innerHTML = '';
+  await renderFn(viewRoot, id ? { id } : undefined);
+}
+window.addEventListener('hashchange', router);
+supabase.auth.onAuthStateChange((event) => { if (event === 'SIGNED_OUT') showLogin(); });
+boot();
+</script>
 </body>
 </html>
