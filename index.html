@@ -379,7 +379,7 @@ async function renderCompanyDetail(root, companyId) {
   const [companyRes, contactsRes, accountsRes] = await Promise.all([
     supabase.from('companies').select('*').eq('id', companyId).single(),
     supabase.from('company_contacts').select('*').eq('company_id', companyId),
-    supabase.from('company_effective_accounts').select('*').eq('company_id', companyId),
+    supabase.from('company_accounts').select('*, accounts(account_number, name_no, class_number)').eq('company_id', companyId),
   ]);
   if (companyRes.error || !companyRes.data) { root.innerHTML = `<p class="error-text">Company not found.</p><a href="#/companies">Back to companies</a>`; return; }
   const c = companyRes.data;
@@ -398,10 +398,152 @@ async function renderCompanyDetail(root, companyId) {
         <p class="muted">${escapeHtml(c.notes || 'No notes on file.')}</p>
       </div>
       <div>
-        <div class="section-label">Accounts used by this company</div>
-        ${(accountsRes.data || []).map(a => `<div class="list-item"><span class="stamp small">${a.account_number}</span> ${escapeHtml(a.name_no)} ${a.is_default ? '<span class="badge badge-class" style="margin-left:6px;">default</span>' : ''}</div>`).join('') || `<div class="muted small">No accounts linked yet.</div>`}
+        <div style="display:flex; justify-content:space-between; align-items:baseline;">
+          <div class="section-label">Accounts used by this company (${(accountsRes.data || []).length})</div>
+          <button class="btn-ghost small" id="add-company-account-btn">Add account</button>
+        </div>
+        <p class="muted small" style="margin-top:-4px; margin-bottom:10px;">Note: this list shows only accounts explicitly added here. Bank, share capital, payroll, and VAT accounts are also automatically available to every company.</p>
+        <div id="company-accounts-list">
+          ${(accountsRes.data || []).map(ca => `
+            <div class="list-item" style="cursor:pointer;" data-ca-id="${ca.account_id}">
+              <div style="display:flex; justify-content:space-between; align-items:baseline;">
+                <span><span class="stamp small">${ca.accounts?.account_number || ''}</span> ${escapeHtml(ca.accounts?.name_no || '')}</span>
+                <span class="muted small">Class ${ca.accounts?.class_number ?? ''}</span>
+              </div>
+              ${ca.usage_notes ? `<p class="muted small" style="margin-top:6px;">${escapeHtml(ca.usage_notes)}</p>` : ''}
+              ${ca.image_path ? `<p class="muted small" style="margin-top:4px;"><em>Screenshot attached</em></p>` : ''}
+            </div>
+          `).join('') || `<div class="muted small">No accounts linked yet. Click "Add account" to link one.</div>`}
+        </div>
       </div>
     </div>`;
+  root.querySelector('#add-company-account-btn').addEventListener('click', () => showAddCompanyAccountModal(root, companyId));
+}
+
+function showAddCompanyAccountModal(root, companyId) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="width:480px;">
+      <h2>Add account to this company</h2>
+      <form id="add-company-account-form">
+        <label>Category</label>
+        <select id="ca-category">
+          <option value="3">Sales / Revenue</option>
+          <option value="4">Cost of goods</option>
+          <option value="6">Operating expense</option>
+          <option value="7">Operating expense (other)</option>
+          <option value="1">Asset</option>
+          <option value="2">Equity / Liability</option>
+          <option value="5">Payroll</option>
+          <option value="8">Finance / Tax</option>
+        </select>
+
+        <label style="margin-top:16px;">
+          <input type="checkbox" id="ca-new-account" style="width:auto; margin-right:6px;" />
+          Create a new account instead of choosing an existing one
+        </label>
+
+        <div id="ca-existing-wrap">
+          <label>Search existing accounts in this category</label>
+          <input type="search" id="ca-account-search" placeholder="Type a number or name" />
+          <div id="ca-account-results" class="muted small" style="margin-top:8px; max-height:160px; overflow-y:auto;"></div>
+          <input type="hidden" id="ca-selected-account-id" />
+          <p id="ca-selected-account-label" class="small" style="margin-top:6px;"></p>
+        </div>
+
+        <div id="ca-new-wrap" hidden>
+          <label>New account number</label>
+          <input type="text" id="ca-new-number" placeholder="e.g. 3050" />
+          <label>Norwegian name</label>
+          <input type="text" id="ca-new-name" />
+          <label>English purpose</label>
+          <input type="text" id="ca-new-purpose" />
+        </div>
+
+        <label style="margin-top:16px;">Comment / bookkeeping instructions</label>
+        <textarea id="ca-notes" rows="3" placeholder="e.g. Use for consulting revenue billed monthly. Debit 1500, credit this account and 2700 for output VAT."></textarea>
+
+        <label style="margin-top:12px;">Screenshot (optional)</label>
+        <input type="file" id="ca-screenshot" accept="image/*" />
+
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button type="button" class="btn-ghost" id="cancel-ca">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
+        </div>
+        <p id="ca-error" class="error-text" hidden></p>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-ca').addEventListener('click', () => overlay.remove());
+
+  const newAccountToggle = overlay.querySelector('#ca-new-account');
+  newAccountToggle.addEventListener('change', () => {
+    overlay.querySelector('#ca-existing-wrap').hidden = newAccountToggle.checked;
+    overlay.querySelector('#ca-new-wrap').hidden = !newAccountToggle.checked;
+  });
+
+  async function searchExisting() {
+    const cls = Number(overlay.querySelector('#ca-category').value);
+    const term = overlay.querySelector('#ca-account-search').value.trim();
+    const resultsEl = overlay.querySelector('#ca-account-results');
+    let query = supabase.from('accounts').select('id, account_number, name_no').eq('class_number', cls).eq('is_active', true).order('account_number').limit(20);
+    if (term) query = query.or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%`);
+    const { data } = await query;
+    resultsEl.innerHTML = (data || []).map(a => `<div class="list-item" style="cursor:pointer;" data-id="${a.id}" data-label="${a.account_number} ${escapeHtml(a.name_no)}"><span class="stamp small">${a.account_number}</span> ${escapeHtml(a.name_no)}</div>`).join('') || '<p class="small">No matches.</p>';
+    resultsEl.querySelectorAll('[data-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        overlay.querySelector('#ca-selected-account-id').value = el.dataset.id;
+        overlay.querySelector('#ca-selected-account-label').textContent = `Selected: ${el.dataset.label}`;
+      });
+    });
+  }
+  overlay.querySelector('#ca-category').addEventListener('change', searchExisting);
+  overlay.querySelector('#ca-account-search').addEventListener('input', debounce(searchExisting, 300));
+  searchExisting();
+
+  overlay.querySelector('#add-company-account-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = overlay.querySelector('#ca-error');
+    errEl.hidden = true;
+    try {
+      let accountId = overlay.querySelector('#ca-selected-account-id').value;
+
+      if (newAccountToggle.checked) {
+        const number = overlay.querySelector('#ca-new-number').value.trim();
+        const name = overlay.querySelector('#ca-new-name').value.trim();
+        const purpose = overlay.querySelector('#ca-new-purpose').value.trim();
+        const cls = Number(overlay.querySelector('#ca-category').value);
+        if (!number || !name || !purpose) throw new Error('Fill in account number, name, and purpose for the new account.');
+        const { data: newAcct, error: newAcctErr } = await supabase.from('accounts')
+          .insert({ account_number: number, class_number: cls, name_no: name, purpose_en: purpose })
+          .select().single();
+        if (newAcctErr) throw newAcctErr;
+        accountId = newAcct.id;
+      }
+      if (!accountId) throw new Error('Choose an existing account, or check the box to create a new one.');
+
+      let imagePath = null;
+      const file = overlay.querySelector('#ca-screenshot').files[0];
+      if (file) {
+        imagePath = `company-accounts/${companyId}/${Date.now()}-${file.name}`;
+        const { error: uploadErr } = await supabase.storage.from('procedure-images').upload(imagePath, file);
+        if (uploadErr) throw uploadErr;
+      }
+
+      const notes = overlay.querySelector('#ca-notes').value.trim();
+      const { error: linkErr } = await supabase.from('company_accounts')
+        .insert({ company_id: companyId, account_id: accountId, usage_notes: notes || null, image_path: imagePath });
+      if (linkErr) throw linkErr;
+
+      overlay.remove();
+      renderCompanyDetail(document.getElementById('view-root'), companyId);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not save this account link.';
+      errEl.hidden = false;
+    }
+  });
 }
 function showAddCompanyModal(root) {
   const overlay = document.createElement('div');
