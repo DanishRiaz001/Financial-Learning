@@ -376,10 +376,11 @@ async function loadCompanyList(root) {
 }
 async function renderCompanyDetail(root, companyId) {
   root.innerHTML = `<p class="muted">Loading company...</p>`;
-  const [companyRes, contactsRes, accountsRes] = await Promise.all([
+  const [companyRes, contactsRes, accountsRes, notesRes] = await Promise.all([
     supabase.from('companies').select('*').eq('id', companyId).single(),
     supabase.from('company_contacts').select('*').eq('company_id', companyId),
     supabase.from('company_accounts').select('*, accounts(account_number, name_no, class_number)').eq('company_id', companyId),
+    supabase.from('company_bookkeeping_notes').select('*, debit:debit_account_id(account_number, name_no), credit:credit_account_id(account_number, name_no)').eq('company_id', companyId).order('created_at', { ascending: false }),
   ]);
   if (companyRes.error || !companyRes.data) { root.innerHTML = `<p class="error-text">Company not found.</p><a href="#/companies">Back to companies</a>`; return; }
   const c = companyRes.data;
@@ -405,7 +406,7 @@ async function renderCompanyDetail(root, companyId) {
         <p class="muted small" style="margin-top:-4px; margin-bottom:10px;">Note: this list shows only accounts explicitly added here. Bank, share capital, payroll, and VAT accounts are also automatically available to every company.</p>
         <div id="company-accounts-list">
           ${(accountsRes.data || []).map(ca => `
-            <div class="list-item" style="cursor:pointer;" data-ca-id="${ca.account_id}">
+            <div class="list-item" data-ca-id="${ca.account_id}">
               <div style="display:flex; justify-content:space-between; align-items:baseline;">
                 <span><span class="stamp small">${ca.accounts?.account_number || ''}</span> ${escapeHtml(ca.accounts?.name_no || '')}</span>
                 <span class="muted small">Class ${ca.accounts?.class_number ?? ''}</span>
@@ -416,8 +417,131 @@ async function renderCompanyDetail(root, companyId) {
           `).join('') || `<div class="muted small">No accounts linked yet. Click "Add account" to link one.</div>`}
         </div>
       </div>
+    </div>
+
+    <div style="margin-top:32px; padding-top:20px; border-top:1px solid var(--border);">
+      <div style="display:flex; justify-content:space-between; align-items:baseline;">
+        <h2>Bookkeeping notes</h2>
+        <button class="btn-ghost small" id="add-bookkeeping-note-btn">Add note</button>
+      </div>
+      <p class="muted small" style="margin-top:4px; margin-bottom:16px;">Reconciliation and transaction-pattern notes for this company - which account to debit, which to credit, and anything to watch out for. Review or edit these any time.</p>
+      <div id="bookkeeping-notes-list">
+        ${(notesRes.data || []).map(n => `
+          <div class="card" style="margin-bottom:10px;" data-note-id="${n.id}">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+              <h3>${escapeHtml(n.title)}</h3>
+              <div style="display:flex; gap:8px;">
+                <button class="btn-ghost small edit-note-btn" data-id="${n.id}">Edit</button>
+                <button class="btn-ghost small delete-note-btn" data-id="${n.id}">Delete</button>
+              </div>
+            </div>
+            <div style="display:flex; gap:16px; margin-top:8px; flex-wrap:wrap;">
+              ${n.debit ? `<span class="small"><strong>Debit:</strong> <span class="stamp small">${n.debit.account_number}</span> ${escapeHtml(n.debit.name_no)}</span>` : ''}
+              ${n.credit ? `<span class="small"><strong>Credit:</strong> <span class="stamp small">${n.credit.account_number}</span> ${escapeHtml(n.credit.name_no)}</span>` : ''}
+            </div>
+            ${n.considerations ? `<p style="margin-top:8px;">${escapeHtml(n.considerations)}</p>` : ''}
+            <p class="muted small" style="margin-top:8px;">${timeAgo(n.created_at)}</p>
+          </div>
+        `).join('') || `<div class="empty-state"><h3>No bookkeeping notes yet.</h3><p>Add one to remember how to handle a recurring transaction, e.g. Booking.com or Vipps sales.</p></div>`}
+      </div>
     </div>`;
   root.querySelector('#add-company-account-btn').addEventListener('click', () => showAddCompanyAccountModal(root, companyId));
+  root.querySelector('#add-bookkeeping-note-btn').addEventListener('click', () => showBookkeepingNoteModal(root, companyId));
+  root.querySelectorAll('.edit-note-btn').forEach(btn => btn.addEventListener('click', () => showBookkeepingNoteModal(root, companyId, btn.dataset.id)));
+  root.querySelectorAll('.delete-note-btn').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Delete this bookkeeping note?')) return;
+    await supabase.from('company_bookkeeping_notes').delete().eq('id', btn.dataset.id);
+    renderCompanyDetail(root, companyId);
+  }));
+}
+
+function accountPickerHtml(label, inputId) {
+  return `
+    <label style="margin-top:16px;">${label}</label>
+    <input type="search" id="${inputId}-search" placeholder="Type a number or name" />
+    <div id="${inputId}-results" class="muted small" style="margin-top:6px; max-height:120px; overflow-y:auto;"></div>
+    <input type="hidden" id="${inputId}-id" />
+    <p id="${inputId}-label" class="small" style="margin-top:4px;"></p>
+  `;
+}
+function wireAccountPicker(overlay, inputId, preselectedLabel) {
+  if (preselectedLabel) overlay.querySelector(`#${inputId}-label`).textContent = `Selected: ${preselectedLabel}`;
+  const search = async () => {
+    const term = overlay.querySelector(`#${inputId}-search`).value.trim();
+    if (!term) { overlay.querySelector(`#${inputId}-results`).innerHTML = ''; return; }
+    const { data } = await supabase.from('accounts').select('id, account_number, name_no').or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%`).eq('is_active', true).limit(10);
+    overlay.querySelector(`#${inputId}-results`).innerHTML = (data || []).map(a => `<div class="list-item" style="cursor:pointer; padding:6px 8px;" data-id="${a.id}" data-label="${a.account_number} ${escapeHtml(a.name_no)}"><span class="stamp small">${a.account_number}</span> ${escapeHtml(a.name_no)}</div>`).join('');
+    overlay.querySelectorAll(`#${inputId}-results [data-id]`).forEach(el => {
+      el.addEventListener('click', () => {
+        overlay.querySelector(`#${inputId}-id`).value = el.dataset.id;
+        overlay.querySelector(`#${inputId}-label`).textContent = `Selected: ${el.dataset.label}`;
+        overlay.querySelector(`#${inputId}-results`).innerHTML = '';
+      });
+    });
+  };
+  overlay.querySelector(`#${inputId}-search`).addEventListener('input', debounce(search, 300));
+}
+
+async function showBookkeepingNoteModal(root, companyId, noteId) {
+  let existing = null;
+  if (noteId) {
+    const { data } = await supabase.from('company_bookkeeping_notes')
+      .select('*, debit:debit_account_id(account_number, name_no), credit:credit_account_id(account_number, name_no)')
+      .eq('id', noteId).single();
+    existing = data;
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="width:480px;">
+      <h2>${existing ? 'Edit' : 'Add'} bookkeeping note</h2>
+      <form id="bk-note-form">
+        <label>Title</label>
+        <input type="text" id="bk-title" placeholder="e.g. Booking.com commission sales" value="${existing ? escapeHtml(existing.title) : ''}" required />
+        ${accountPickerHtml('Debit account', 'bk-debit')}
+        ${accountPickerHtml('Credit account', 'bk-credit')}
+        <label style="margin-top:16px;">Considerations / things to watch out for</label>
+        <textarea id="bk-considerations" rows="3" placeholder="e.g. Booking.com deducts commission before payout - book the gross sale and commission separately, do not net them.">${existing ? escapeHtml(existing.considerations || '') : ''}</textarea>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button type="button" class="btn-ghost" id="cancel-bk-note">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
+        </div>
+        <p id="bk-note-error" class="error-text" hidden></p>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-bk-note').addEventListener('click', () => overlay.remove());
+
+  if (existing?.debit_account_id) overlay.querySelector('#bk-debit-id').value = existing.debit_account_id;
+  if (existing?.credit_account_id) overlay.querySelector('#bk-credit-id').value = existing.credit_account_id;
+  wireAccountPicker(overlay, 'bk-debit', existing?.debit ? `${existing.debit.account_number} ${existing.debit.name_no}` : null);
+  wireAccountPicker(overlay, 'bk-credit', existing?.credit ? `${existing.credit.account_number} ${existing.credit.name_no}` : null);
+
+  overlay.querySelector('#bk-note-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = overlay.querySelector('#bk-note-error');
+    try {
+      const payload = {
+        company_id: companyId,
+        title: overlay.querySelector('#bk-title').value.trim(),
+        debit_account_id: overlay.querySelector('#bk-debit-id').value || null,
+        credit_account_id: overlay.querySelector('#bk-credit-id').value || null,
+        considerations: overlay.querySelector('#bk-considerations').value.trim() || null,
+        created_by: getProfile()?.id,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = existing
+        ? await supabase.from('company_bookkeeping_notes').update(payload).eq('id', existing.id)
+        : await supabase.from('company_bookkeeping_notes').insert(payload);
+      if (error) throw error;
+      overlay.remove();
+      renderCompanyDetail(root, companyId);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not save this note.';
+      errEl.hidden = false;
+    }
+  });
 }
 
 function showAddCompanyAccountModal(root, companyId) {
