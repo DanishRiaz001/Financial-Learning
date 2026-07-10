@@ -271,7 +271,7 @@ async function loadAccountsList(root) {
   const listEl = root.querySelector('#accounts-list');
   const paginationEl = root.querySelector('#pagination-controls');
   const searchTerm = root.querySelector('#accounts-search').value.trim();
-  let query = supabase.from('accounts').select('id, account_number, name_no, purpose_en, class_number', { count: 'exact' }).eq('is_active', true).order('account_number');
+  let query = supabase.from('accounts').select('id, account_number, name_no, purpose_en, simple_explanation_en, class_number', { count: 'exact' }).eq('is_active', true).order('account_number');
   if (activeClassFilter) query = query.eq('class_number', activeClassFilter);
   if (searchTerm) query = query.or(`account_number.ilike.%${searchTerm}%,name_no.ilike.%${searchTerm}%,purpose_en.ilike.%${searchTerm}%`);
   const from = currentPage * pageSize;
@@ -280,7 +280,7 @@ async function loadAccountsList(root) {
   if (error) { listEl.innerHTML = `<p class="error-text">Could not load accounts: ${error.message}</p>`; paginationEl.innerHTML = ''; return; }
   if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No accounts match your search.</h3><p>Try a different account number or keyword.</p></div>`; paginationEl.innerHTML = ''; return; }
   listEl.innerHTML = `<table><thead><tr><th>Konto</th><th>Navn</th><th>Purpose</th></tr></thead><tbody>
-    ${data.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.purpose_en)}</td></tr>`).join('')}
+    ${data.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.simple_explanation_en || a.purpose_en)}</td></tr>`).join('')}
   </tbody></table>`;
   listEl.querySelectorAll('tr.row-link').forEach(row => row.addEventListener('click', () => { window.location.hash = `#/accounts/${row.dataset.id}`; }));
 
@@ -304,7 +304,7 @@ async function renderAccountDetail(root, accountId) {
     supabase.from('account_examples').select('*').eq('account_id', accountId).order('order_index'),
     supabase.from('account_requirements').select('*, law_articles(paragraph_no, laws(short_name_no, full_name_en))').eq('account_id', accountId),
     supabase.from('account_audit_requirements').select('*').eq('account_id', accountId),
-    supabase.from('account_law_references').select('law_articles(paragraph_no, title_en, summary_en, laws(short_name_no, full_name_en))').eq('account_id', accountId),
+    supabase.from('account_law_references').select('law_articles(id, paragraph_no, title_en, summary_en, laws(id, short_name_no, full_name_en, official_url))').eq('account_id', accountId),
     supabase.from('procedure_related_accounts').select('procedures(id, title_en, category)').eq('account_id', accountId),
     hasRole('senior') ? supabase.from('company_effective_accounts').select('*').eq('account_id', accountId) : Promise.resolve({ data: [] }),
   ]);
@@ -316,7 +316,8 @@ async function renderAccountDetail(root, accountId) {
       <div>
         <span class="badge badge-class">${a.account_classes ? `Class ${a.class_number} - ${a.account_classes.name_en}` : `Class ${a.class_number}`}</span>
         <h1 style="margin-top:10px;"><span class="stamp large">${a.account_number}</span> ${escapeHtml(a.name_no)}</h1>
-        <p class="muted" style="margin-top:6px;">${escapeHtml(a.purpose_en)}</p>
+        ${a.simple_explanation_en ? `<p style="margin-top:8px; font-size:15px;">${escapeHtml(a.simple_explanation_en)}</p>` : ''}
+        <p class="muted small" style="margin-top:6px;"><span style="font-weight:500;">In accounting terms:</span> ${escapeHtml(a.purpose_en)}</p>
       </div>
       <div class="muted small" style="text-align:right;">
         <p>VAT: ${a.vat_codes ? `${escapeHtml(a.vat_codes.name_en)} (${a.vat_codes.rate_percent}%)` : 'not applicable'}</p>
@@ -334,7 +335,16 @@ async function renderAccountDetail(root, accountId) {
       </div>
       <div>
         <div class="section-label">Law references</div>
-        ${(lawRefsRes.data || []).map(x => `<div class="list-item"><div>${escapeHtml(x.law_articles?.title_en || x.law_articles?.paragraph_no || '')}</div><div class="muted small" style="margin-top:4px;">${escapeHtml(x.law_articles?.summary_en || '')}</div></div>`).join('') || emptyLine()}
+        ${(lawRefsRes.data || []).map(x => `
+          <div class="list-item">
+            <div>${escapeHtml(x.law_articles?.title_en || x.law_articles?.paragraph_no || '')}</div>
+            <div class="muted small" style="margin-top:4px;">${escapeHtml(x.law_articles?.summary_en || '')}</div>
+            <div style="margin-top:6px; display:flex; gap:12px;">
+              ${x.law_articles?.laws?.id ? `<a href="#/laws/${x.law_articles.laws.id}" class="small">Read full ${escapeHtml(x.law_articles.laws.short_name_no || 'law')} in English</a>` : ''}
+              ${x.law_articles?.laws?.official_url ? `<a href="${escapeHtml(x.law_articles.laws.official_url)}" target="_blank" rel="noopener" class="small">Official Norwegian text</a>` : ''}
+            </div>
+          </div>
+        `).join('') || emptyLine()}
         <div class="section-label" style="margin-top:20px;">Linked procedures</div>
         ${(proceduresRes.data || []).map(x => `<div class="list-item">${escapeHtml(x.procedures?.title_en || '')}</div>`).join('') || emptyLine()}
         ${hasRole('senior') ? `<div class="section-label" style="margin-top:20px;">Companies using this account</div>${(companiesRes.data || []).map(x => `<div class="list-item">${escapeHtml(x.company_id)}</div>`).join('') || emptyLine('No companies linked yet.')}` : ''}
@@ -1230,7 +1240,7 @@ async function runGlobalSearch(root, term) {
   if (!term) { resultsEl.innerHTML = `<p class="muted">Type a term above to search.</p>`; return; }
 
   const [acctRes, lawRes] = await Promise.all([
-    supabase.from('accounts').select('id, account_number, name_no, purpose_en').eq('is_active', true)
+    supabase.from('accounts').select('id, account_number, name_no, purpose_en, simple_explanation_en').eq('is_active', true)
       .or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%,purpose_en.ilike.%${term}%`).limit(20),
     supabase.from('law_articles').select('*, laws(id, short_name_no, full_name_en, official_url)')
       .or(`title_en.ilike.%${term}%,summary_en.ilike.%${term}%,title_no.ilike.%${term}%,paragraph_no.ilike.%${term}%`).limit(20),
@@ -1242,7 +1252,7 @@ async function runGlobalSearch(root, term) {
   resultsEl.innerHTML = `
     <div class="section-label">Accounts (${accounts.length})</div>
     ${accounts.length ? `<table><thead><tr><th>Konto</th><th>Navn</th><th>Purpose</th></tr></thead><tbody>
-      ${accounts.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.purpose_en)}</td></tr>`).join('')}
+      ${accounts.map(a => `<tr class="row-link" data-id="${a.id}"><td><span class="stamp small">${a.account_number}</span></td><td>${escapeHtml(a.name_no)}</td><td class="muted">${escapeHtml(a.simple_explanation_en || a.purpose_en)}</td></tr>`).join('')}
     </tbody></table>` : `<p class="muted small">No matching accounts.</p>`}
 
     <div class="section-label" style="margin-top:24px;">Law articles (${laws.length})</div>
