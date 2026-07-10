@@ -493,7 +493,7 @@ async function showBookkeepingNoteModal(root, companyId, noteId) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
   overlay.innerHTML = `
-    <div class="modal" style="width:480px;">
+    <div class="modal" style="width:480px; max-height:82vh; overflow-y:auto;">
       <h2>${existing ? 'Edit' : 'Add'} bookkeeping note</h2>
       <form id="bk-note-form">
         <label>Title</label>
@@ -502,6 +502,9 @@ async function showBookkeepingNoteModal(root, companyId, noteId) {
         ${accountPickerHtml('Credit account', 'bk-credit')}
         <label style="margin-top:16px;">Considerations / things to watch out for</label>
         <textarea id="bk-considerations" rows="3" placeholder="e.g. Booking.com deducts commission before payout - book the gross sale and commission separately, do not net them.">${existing ? escapeHtml(existing.considerations || '') : ''}</textarea>
+        <label style="margin-top:12px;">Attachment / screenshot (optional)</label>
+        <input type="file" id="bk-attachment" accept="image/*" />
+        ${existing?.image_path ? `<p class="muted small" style="margin-top:4px;">An attachment is already saved. Choosing a new file replaces it.</p>` : ''}
         <div style="display:flex; gap:10px; margin-top:20px;">
           <button type="button" class="btn-ghost" id="cancel-bk-note">Cancel</button>
           <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
@@ -522,12 +525,20 @@ async function showBookkeepingNoteModal(root, companyId, noteId) {
     e.preventDefault();
     const errEl = overlay.querySelector('#bk-note-error');
     try {
+      let imagePath = existing?.image_path || null;
+      const file = overlay.querySelector('#bk-attachment').files[0];
+      if (file) {
+        imagePath = `company-notes/${companyId}/${Date.now()}-${file.name}`;
+        const { error: uploadErr } = await supabase.storage.from('procedure-images').upload(imagePath, file);
+        if (uploadErr) throw uploadErr;
+      }
       const payload = {
         company_id: companyId,
         title: overlay.querySelector('#bk-title').value.trim(),
         debit_account_id: overlay.querySelector('#bk-debit-id').value || null,
         credit_account_id: overlay.querySelector('#bk-credit-id').value || null,
         considerations: overlay.querySelector('#bk-considerations').value.trim() || null,
+        image_path: imagePath,
         created_by: getProfile()?.id,
         updated_at: new Date().toISOString(),
       };
@@ -672,26 +683,165 @@ function showAddCompanyAccountModal(root, companyId) {
 function showAddCompanyModal(root) {
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay';
-  overlay.innerHTML = `<div class="modal"><h2>Add company</h2><form id="add-company-form">
-    <label>Company name</label><input type="text" id="c-name" required />
-    <label>Org number</label><input type="text" id="c-org" />
-    <label>Industry</label><input type="text" id="c-industry" />
-    <label>Invoice contact email</label><input type="email" id="c-email" placeholder="invoices@company.no" />
-    <div style="display:flex; gap:10px; margin-top:20px;"><button type="button" class="btn-ghost" id="cancel-add">Cancel</button><button type="submit" class="btn-primary" style="margin-top:0;">Save company</button></div>
-    <p id="add-company-error" class="error-text" hidden></p></form></div>`;
+  overlay.innerHTML = `<div class="modal" style="width:520px; max-height:85vh; overflow-y:auto;">
+    <h2>Add company</h2>
+    <form id="add-company-form">
+      <label>Company name</label><input type="text" id="c-name" required />
+      <label>Org number</label><input type="text" id="c-org" />
+      <label>Industry</label><input type="text" id="c-industry" />
+      <label>Invoice contact email</label><input type="email" id="c-email" placeholder="invoices@company.no" />
+      <label>General notes (optional)</label>
+      <textarea id="c-notes" rows="2" placeholder="Anything general worth knowing about this company"></textarea>
+
+      <div style="margin-top:20px; padding-top:16px; border-top:1px solid var(--border);">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:0;">
+          <input type="checkbox" id="c-add-account-toggle" style="width:auto;" />
+          Also link an account used by this company (optional)
+        </label>
+        <div id="c-account-section" hidden style="margin-top:8px;">
+          <label>Category</label>
+          <select id="c-account-category">
+            <option value="3">Sales / Revenue</option>
+            <option value="4">Cost of goods</option>
+            <option value="6">Operating expense</option>
+            <option value="7">Operating expense (other)</option>
+            <option value="1">Asset</option>
+            <option value="2">Equity / Liability</option>
+            <option value="5">Payroll</option>
+            <option value="8">Finance / Tax</option>
+          </select>
+          <label>Search existing accounts</label>
+          <input type="search" id="c-account-search" placeholder="Type a number or name" />
+          <div id="c-account-results" class="muted small" style="margin-top:6px; max-height:120px; overflow-y:auto;"></div>
+          <input type="hidden" id="c-account-id" />
+          <p id="c-account-label" class="small" style="margin-top:4px;"></p>
+          <label style="margin-top:10px;">Comment for this account</label>
+          <textarea id="c-account-notes" rows="2"></textarea>
+          <label style="margin-top:10px;">Attachment / screenshot (optional)</label>
+          <input type="file" id="c-account-attachment" accept="image/*" />
+        </div>
+      </div>
+
+      <div style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border);">
+        <label style="display:flex; align-items:center; gap:8px; margin-top:0;">
+          <input type="checkbox" id="c-add-bknote-toggle" style="width:auto;" />
+          Also add a bookkeeping note - debit/credit for a common transaction (optional)
+        </label>
+        <div id="c-bknote-section" hidden style="margin-top:8px;">
+          <label>Title</label>
+          <input type="text" id="c-bk-title" placeholder="e.g. Booking.com commission sales" />
+          ${accountPickerHtml('Debit account', 'c-bk-debit')}
+          ${accountPickerHtml('Credit account', 'c-bk-credit')}
+          <label style="margin-top:10px;">Considerations</label>
+          <textarea id="c-bk-considerations" rows="2" placeholder="Anything to watch out for"></textarea>
+          <label style="margin-top:10px;">Attachment / screenshot (optional)</label>
+          <input type="file" id="c-bk-attachment" accept="image/*" />
+        </div>
+      </div>
+
+      <div style="display:flex; gap:10px; margin-top:20px;">
+        <button type="button" class="btn-ghost" id="cancel-add">Cancel</button>
+        <button type="submit" class="btn-primary" style="margin-top:0;">Save company</button>
+      </div>
+      <p id="add-company-error" class="error-text" hidden></p>
+    </form>
+  </div>`;
   document.body.appendChild(overlay);
   overlay.querySelector('#cancel-add').addEventListener('click', () => overlay.remove());
+
+  overlay.querySelector('#c-add-account-toggle').addEventListener('change', (e) => {
+    overlay.querySelector('#c-account-section').hidden = !e.target.checked;
+  });
+  overlay.querySelector('#c-add-bknote-toggle').addEventListener('change', (e) => {
+    overlay.querySelector('#c-bknote-section').hidden = !e.target.checked;
+    if (e.target.checked) {
+      wireAccountPicker(overlay, 'c-bk-debit');
+      wireAccountPicker(overlay, 'c-bk-credit');
+    }
+  });
+
+  async function searchCompanyAccounts() {
+    const cls = Number(overlay.querySelector('#c-account-category').value);
+    const term = overlay.querySelector('#c-account-search').value.trim();
+    let query = supabase.from('accounts').select('id, account_number, name_no').eq('class_number', cls).eq('is_active', true).order('account_number').limit(20);
+    if (term) query = query.or(`account_number.ilike.%${term}%,name_no.ilike.%${term}%`);
+    const { data } = await query;
+    const resultsEl = overlay.querySelector('#c-account-results');
+    resultsEl.innerHTML = (data || []).map(a => `<div class="list-item" style="cursor:pointer; padding:6px 8px;" data-id="${a.id}" data-label="${a.account_number} ${escapeHtml(a.name_no)}"><span class="stamp small">${a.account_number}</span> ${escapeHtml(a.name_no)}</div>`).join('') || '<p class="small">No matches.</p>';
+    resultsEl.querySelectorAll('[data-id]').forEach(el => {
+      el.addEventListener('click', () => {
+        overlay.querySelector('#c-account-id').value = el.dataset.id;
+        overlay.querySelector('#c-account-label').textContent = `Selected: ${el.dataset.label}`;
+      });
+    });
+  }
+  overlay.querySelector('#c-account-category').addEventListener('change', searchCompanyAccounts);
+  overlay.querySelector('#c-account-search').addEventListener('input', debounce(searchCompanyAccounts, 300));
+
   overlay.querySelector('#add-company-form').addEventListener('submit', async (e) => {
     e.preventDefault();
-    const name = overlay.querySelector('#c-name').value.trim();
-    const org = overlay.querySelector('#c-org').value.trim();
-    const industry = overlay.querySelector('#c-industry').value.trim();
-    const email = overlay.querySelector('#c-email').value.trim();
-    const { data: company, error } = await supabase.from('companies').insert({ name, org_number: org || null, industry: industry || null, created_by: getProfile()?.id }).select().single();
-    if (error) { const errEl = overlay.querySelector('#add-company-error'); errEl.textContent = error.message; errEl.hidden = false; return; }
-    if (email) await supabase.from('company_contacts').insert({ company_id: company.id, contact_type: 'invoice', email });
-    overlay.remove();
-    loadCompanyList(root);
+    const errEl = overlay.querySelector('#add-company-error');
+    errEl.hidden = true;
+    try {
+      const name = overlay.querySelector('#c-name').value.trim();
+      const org = overlay.querySelector('#c-org').value.trim();
+      const industry = overlay.querySelector('#c-industry').value.trim();
+      const email = overlay.querySelector('#c-email').value.trim();
+      const notes = overlay.querySelector('#c-notes').value.trim();
+
+      const { data: company, error } = await supabase.from('companies')
+        .insert({ name, org_number: org || null, industry: industry || null, notes: notes || null, created_by: getProfile()?.id })
+        .select().single();
+      if (error) throw error;
+
+      if (email) await supabase.from('company_contacts').insert({ company_id: company.id, contact_type: 'invoice', email });
+
+      if (overlay.querySelector('#c-add-account-toggle').checked) {
+        const accountId = overlay.querySelector('#c-account-id').value;
+        if (accountId) {
+          let caImagePath = null;
+          const caFile = overlay.querySelector('#c-account-attachment').files[0];
+          if (caFile) {
+            caImagePath = `company-accounts/${company.id}/${Date.now()}-${caFile.name}`;
+            const { error: caUploadErr } = await supabase.storage.from('procedure-images').upload(caImagePath, caFile);
+            if (caUploadErr) throw caUploadErr;
+          }
+          await supabase.from('company_accounts').insert({
+            company_id: company.id, account_id: accountId,
+            usage_notes: overlay.querySelector('#c-account-notes').value.trim() || null,
+            image_path: caImagePath,
+          });
+        }
+      }
+
+      if (overlay.querySelector('#c-add-bknote-toggle').checked) {
+        const title = overlay.querySelector('#c-bk-title').value.trim();
+        const debitId = overlay.querySelector('#c-bk-debit-id').value;
+        const creditId = overlay.querySelector('#c-bk-credit-id').value;
+        if (title) {
+          let bkImagePath = null;
+          const bkFile = overlay.querySelector('#c-bk-attachment').files[0];
+          if (bkFile) {
+            bkImagePath = `company-notes/${company.id}/${Date.now()}-${bkFile.name}`;
+            const { error: bkUploadErr } = await supabase.storage.from('procedure-images').upload(bkImagePath, bkFile);
+            if (bkUploadErr) throw bkUploadErr;
+          }
+          await supabase.from('company_bookkeeping_notes').insert({
+            company_id: company.id, title,
+            image_path: bkImagePath,
+            debit_account_id: debitId || null, credit_account_id: creditId || null,
+            considerations: overlay.querySelector('#c-bk-considerations').value.trim() || null,
+            created_by: getProfile()?.id,
+          });
+        }
+      }
+
+      overlay.remove();
+      window.location.hash = `#/companies/${company.id}`;
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not save this company.';
+      errEl.hidden = false;
+    }
   });
 }
 
