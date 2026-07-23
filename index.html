@@ -126,6 +126,7 @@ tr.row-link:hover { background: #FBFAF6; }
       <a href="#/laws" data-route="laws">Laws</a>
       <a href="#/learn" data-route="learn">Learn</a>
       <a href="#/knowledge" data-route="knowledge">Knowledge log</a>
+      <a href="#/scenarios" data-route="scenarios">Scenarios</a>
       <a href="#/admin" data-route="admin" id="nav-admin">Admin</a>
     </nav>
     <main class="content" id="view-root"></main>
@@ -317,6 +318,7 @@ async function renderAccountDetail(root, accountId) {
         <span class="badge badge-class">${a.account_classes ? `Class ${a.class_number} - ${a.account_classes.name_en}` : `Class ${a.class_number}`}</span>
         <h1 style="margin-top:10px;"><span class="stamp large">${a.account_number}</span> ${escapeHtml(a.name_no)}</h1>
         ${a.simple_explanation_en ? `<p style="margin-top:8px; font-size:15px;">${escapeHtml(a.simple_explanation_en)}</p>` : ''}
+        ${a.ai_teaching_note_en ? `<div class="card" style="margin-top:10px; background:var(--paper);"><p class="muted small" style="font-weight:500; margin-bottom:4px;">If you are new to this, here is the fuller picture:</p><p class="small">${escapeHtml(a.ai_teaching_note_en)}</p></div>` : ''}
         <p class="muted small" style="margin-top:6px;"><span style="font-weight:500;">In accounting terms:</span> ${escapeHtml(a.purpose_en)}</p>
       </div>
       <div class="muted small" style="text-align:right;">
@@ -1272,12 +1274,125 @@ async function runGlobalSearch(root, term) {
   });
 }
 
+// ---------- SCENARIOS (global notebook, not tied to any company) ----------
+async function renderScenarios(root) {
+  root.innerHTML = `
+    <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+      <div><h1>Scenarios</h1><p class="muted">Your running notebook: a term or situation, which account to debit, which to credit, and any instructions. Add one whenever you figure something out.</p></div>
+      <button class="btn-ghost" id="add-scenario-btn">Add scenario</button>
+    </div>
+    <div class="toolbar" style="margin-top:20px;"><input type="search" id="scenario-search" placeholder="Search by title or instructions" /></div>
+    <div id="scenarios-list" style="margin-top:16px;"><p class="muted">Loading...</p></div>
+  `;
+  root.querySelector('#add-scenario-btn').addEventListener('click', () => showScenarioModal(root));
+  root.querySelector('#scenario-search').addEventListener('input', debounce(() => loadScenarios(root), 300));
+  loadScenarios(root);
+}
+
+async function loadScenarios(root) {
+  const listEl = root.querySelector('#scenarios-list');
+  const term = root.querySelector('#scenario-search').value.trim();
+  let query = supabase.from('scenario_notes')
+    .select('*, debit:debit_account_id(account_number, name_no), credit:credit_account_id(account_number, name_no)')
+    .order('created_at', { ascending: false });
+  if (term) query = query.or(`title.ilike.%${term}%,instructions.ilike.%${term}%`);
+  const { data, error } = await query;
+  if (error) { listEl.innerHTML = `<p class="error-text">${error.message}</p>`; return; }
+  if (!data.length) { listEl.innerHTML = `<div class="empty-state"><h3>No scenarios yet.</h3><p>Add one to start building your own reference notebook.</p></div>`; return; }
+  listEl.innerHTML = data.map(n => `
+    <div class="card" style="margin-bottom:10px;" data-id="${n.id}">
+      <div style="display:flex; justify-content:space-between; align-items:flex-start;">
+        <h3>${escapeHtml(n.title)}</h3>
+        <div style="display:flex; gap:8px;">
+          <button class="btn-ghost small edit-scenario-btn" data-id="${n.id}">Edit</button>
+          <button class="btn-ghost small delete-scenario-btn" data-id="${n.id}">Delete</button>
+        </div>
+      </div>
+      <div style="display:flex; gap:16px; margin-top:8px; flex-wrap:wrap;">
+        ${n.debit ? `<span class="small"><strong>Debit:</strong> <span class="stamp small">${n.debit.account_number}</span> ${escapeHtml(n.debit.name_no)}</span>` : ''}
+        ${n.credit ? `<span class="small"><strong>Credit:</strong> <span class="stamp small">${n.credit.account_number}</span> ${escapeHtml(n.credit.name_no)}</span>` : ''}
+        ${!n.debit && !n.credit ? `<span class="muted small">No specific account attached to this note.</span>` : ''}
+      </div>
+      ${n.instructions ? `<p style="margin-top:8px;">${escapeHtml(n.instructions)}</p>` : ''}
+      <p class="muted small" style="margin-top:8px;">${timeAgo(n.created_at)}</p>
+    </div>
+  `).join('');
+  listEl.querySelectorAll('.edit-scenario-btn').forEach(btn => btn.addEventListener('click', () => showScenarioModal(root, btn.dataset.id)));
+  listEl.querySelectorAll('.delete-scenario-btn').forEach(btn => btn.addEventListener('click', async () => {
+    if (!confirm('Delete this scenario?')) return;
+    await supabase.from('scenario_notes').delete().eq('id', btn.dataset.id);
+    loadScenarios(root);
+  }));
+}
+
+async function showScenarioModal(root, scenarioId) {
+  let existing = null;
+  if (scenarioId) {
+    const { data } = await supabase.from('scenario_notes')
+      .select('*, debit:debit_account_id(account_number, name_no), credit:credit_account_id(account_number, name_no)')
+      .eq('id', scenarioId).single();
+    existing = data;
+  }
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay';
+  overlay.innerHTML = `
+    <div class="modal" style="width:480px; max-height:82vh; overflow-y:auto;">
+      <h2>${existing ? 'Edit' : 'Add'} scenario</h2>
+      <form id="scenario-form">
+        <label>Title / term</label>
+        <input type="text" id="sc-title" placeholder="e.g. Import of services from abroad" value="${existing ? escapeHtml(existing.title) : ''}" required />
+        <p class="muted small" style="margin-top:12px;">Accounts are optional - only fill these in if this note is about a specific debit/credit pair.</p>
+        ${accountPickerHtml('Debit account (optional)', 'sc-debit')}
+        ${accountPickerHtml('Credit account (optional)', 'sc-credit')}
+        <label style="margin-top:16px;">Instructions / notes</label>
+        <textarea id="sc-instructions" rows="4" placeholder="Whatever you want to remember about this">${existing ? escapeHtml(existing.instructions || '') : ''}</textarea>
+        <div style="display:flex; gap:10px; margin-top:20px;">
+          <button type="button" class="btn-ghost" id="cancel-scenario">Cancel</button>
+          <button type="submit" class="btn-primary" style="margin-top:0;">Save</button>
+        </div>
+        <p id="scenario-error" class="error-text" hidden></p>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  overlay.querySelector('#cancel-scenario').addEventListener('click', () => overlay.remove());
+
+  if (existing?.debit_account_id) overlay.querySelector('#sc-debit-id').value = existing.debit_account_id;
+  if (existing?.credit_account_id) overlay.querySelector('#sc-credit-id').value = existing.credit_account_id;
+  wireAccountPicker(overlay, 'sc-debit', existing?.debit ? `${existing.debit.account_number} ${existing.debit.name_no}` : null);
+  wireAccountPicker(overlay, 'sc-credit', existing?.credit ? `${existing.credit.account_number} ${existing.credit.name_no}` : null);
+
+  overlay.querySelector('#scenario-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const errEl = overlay.querySelector('#scenario-error');
+    try {
+      const payload = {
+        title: overlay.querySelector('#sc-title').value.trim(),
+        debit_account_id: overlay.querySelector('#sc-debit-id').value || null,
+        credit_account_id: overlay.querySelector('#sc-credit-id').value || null,
+        instructions: overlay.querySelector('#sc-instructions').value.trim() || null,
+        created_by: getProfile()?.id,
+        updated_at: new Date().toISOString(),
+      };
+      const { error } = existing
+        ? await supabase.from('scenario_notes').update(payload).eq('id', existing.id)
+        : await supabase.from('scenario_notes').insert(payload);
+      if (error) throw error;
+      overlay.remove();
+      renderScenarios(root);
+    } catch (err) {
+      errEl.textContent = err.message || 'Could not save this scenario.';
+      errEl.hidden = false;
+    }
+  });
+}
+
 // ---------- ROUTER / BOOT ----------
 const loginScreen = document.getElementById('login-screen');
 const appShell = document.getElementById('app-shell');
 const viewRoot = document.getElementById('view-root');
 const sidebar = document.getElementById('sidebar');
-const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, laws: renderLaws, learn: renderLearn, knowledge: renderKnowledge, admin: renderAdmin, search: renderGlobalSearch };
+const routes = { home: renderHome, accounts: renderAccounts, companies: renderCompanies, procedures: renderProcedures, laws: renderLaws, learn: renderLearn, knowledge: renderKnowledge, scenarios: renderScenarios, admin: renderAdmin, search: renderGlobalSearch };
 
 async function boot() {
   const session = await getSession();
